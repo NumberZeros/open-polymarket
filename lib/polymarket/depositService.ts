@@ -12,6 +12,8 @@
 
 import { POLYGON_CONTRACTS } from "./config";
 import { encodeFunctionData, parseUnits, maxUint256 } from "viem";
+// Re-export from proxyWallet to avoid duplicates
+export { formatUsdcAmount } from "./proxyWallet";
 
 // ============= Contract ABIs (minimal) =============
 
@@ -264,16 +266,7 @@ export function buildUsdcApproval(spender: string, amount?: bigint): ApprovalTra
 
 // ============= Utility =============
 
-/**
- * Format USDC amount (6 decimals)
- */
-export function formatUsdcAmount(amount: bigint): string {
-  const value = Number(amount) / 1e6;
-  return value.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
+// Note: formatUsdcAmount is re-exported from ./proxyWallet at top of file
 
 /**
  * Parse USDC amount to bigint

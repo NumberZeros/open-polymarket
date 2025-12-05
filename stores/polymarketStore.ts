@@ -7,12 +7,8 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { TradingStatus, Position, Order, OrderParams } from "@/lib/polymarket/types";
-import {
-  getSafeAddress,
-  deploySafe,
-  setupTradingApprovals,
-  checkApprovals,
-} from "@/lib/polymarket/relayerApi";
+import { getSafeAddress, deploySafe } from "@/lib/polymarket/relayerApi";
+import { deriveProxyWalletAddress } from "@/lib/polymarket/proxyWallet";
 import {
   deriveApiKey,
   getOpenOrders,
@@ -45,7 +41,8 @@ interface PolymarketState {
   credentials: TradingCredentials | null;
 
   // Balances & Positions
-  usdcBalance: number;
+  eoaUsdcBalance: number;         // USDC in user's EOA wallet (MetaMask)
+  proxyWalletUsdcBalance: number; // USDC in Proxy Wallet (Safe) - for trading
   positions: Position[];
   openOrders: Order[];
 }
@@ -62,10 +59,6 @@ interface PolymarketActions {
   deploySafeWallet: (
     signTypedData: (domain: object, types: object, value: object) => Promise<string>
   ) => Promise<boolean>;
-  
-  setupApprovals: (
-    signTypedData: (domain: object, types: object, value: object) => Promise<string>
-  ) => Promise<boolean>;
 
   // Credentials - now uses signTypedData for EIP-712
   deriveCredentials: (
@@ -73,6 +66,7 @@ interface PolymarketActions {
   ) => Promise<boolean>;
 
   // Balances
+  setEoaUsdcBalance: (balance: number) => void;
   refreshBalances: () => Promise<void>;
 
   // Trading
@@ -96,7 +90,8 @@ const initialState: PolymarketState = {
   safeAddress: null,
   hasApprovals: false,
   credentials: null,
-  usdcBalance: 0,
+  eoaUsdcBalance: 0,
+  proxyWalletUsdcBalance: 0,
   positions: [],
   openOrders: [],
 };
@@ -125,21 +120,26 @@ export const usePolymarketStore = create<PolymarketStore>()(
         try {
           console.log("[Polymarket] Initializing for wallet:", address);
           
-          // For EOA wallets (MetaMask), we don't need a Safe
-          // Just set the wallet address as the "safeAddress" for trading
-          // The user can use their EOA directly with Polymarket
+          // Derive the Proxy Wallet (Gnosis Safe) address from EOA
+          // This is deterministic via CREATE2
+          const proxyWalletAddress = deriveProxyWalletAddress(address);
           
-          // Check if user has existing API credentials persisted
-          const { credentials } = get();
+          // Check if Safe is deployed via Relayer API
+          const deployedSafeAddress = await getSafeAddress(address);
           
           // Set wallet as ready for trading
-          // hasApprovals should be checked via CLOB API balance-allowance endpoint
+          // Note: safeAddress is the Proxy Wallet (Safe), not EOA
+          // hasApprovals should be checked separately via depositService
           set({ 
-            safeAddress: address, // EOA address is used directly
-            hasApprovals: true, // We'll assume true for now, actual check via API
+            safeAddress: deployedSafeAddress || proxyWalletAddress,
+            hasApprovals: !!deployedSafeAddress, // Only true if deployed
           });
           
-          console.log("[Polymarket] Wallet initialized, address:", address);
+          console.log("[Polymarket] Wallet initialized:", {
+            eoa: address,
+            proxyWallet: deployedSafeAddress || proxyWalletAddress,
+            isDeployed: !!deployedSafeAddress,
+          });
         } catch (err) {
           console.error("[Polymarket] Init failed:", err);
           set({ error: err instanceof Error ? err.message : "Failed to initialize" });
@@ -184,34 +184,6 @@ export const usePolymarketStore = create<PolymarketStore>()(
         }
       },
 
-      // Setup trading approvals
-      setupApprovals: async (signTypedData) => {
-        const { address, safeAddress } = get();
-        if (!address || !safeAddress) {
-          set({ error: "Safe wallet not deployed" });
-          return false;
-        }
-
-        set({ isLoading: true, error: null });
-
-        try {
-          const result = await setupTradingApprovals(address, safeAddress, signTypedData);
-
-          if (result.success) {
-            set({ hasApprovals: true });
-            return true;
-          } else {
-            set({ error: result.error || "Failed to setup approvals" });
-            return false;
-          }
-        } catch (err) {
-          set({ error: err instanceof Error ? err.message : "Failed to setup approvals" });
-          return false;
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-
       // Derive trading credentials using EIP-712 signature
       deriveCredentials: async (signTypedData) => {
         const { address } = get();
@@ -235,7 +207,12 @@ export const usePolymarketStore = create<PolymarketStore>()(
         }
       },
 
-      // Refresh balances
+      // Set EOA USDC balance (called from wagmi hook)
+      setEoaUsdcBalance: (balance) => {
+        set({ eoaUsdcBalance: balance });
+      },
+
+      // Refresh balances (Proxy Wallet balance from CLOB API)
       refreshBalances: async () => {
         const { safeAddress } = get();
         if (!safeAddress) return;
@@ -250,7 +227,7 @@ export const usePolymarketStore = create<PolymarketStore>()(
           ]);
 
           set({
-            usdcBalance: parseFloat(balanceResult.balance) || 0,
+            proxyWalletUsdcBalance: parseFloat(balanceResult.balance) || 0,
             positions,
             openOrders: orders,
           });
@@ -378,6 +355,7 @@ export const usePolymarketError = () => usePolymarketStore((state) => state.erro
 export const useSafeAddress = () => usePolymarketStore((state) => state.safeAddress);
 export const useHasApprovals = () => usePolymarketStore((state) => state.hasApprovals);
 export const useCredentials = () => usePolymarketStore((state) => state.credentials);
-export const useUsdcBalance = () => usePolymarketStore((state) => state.usdcBalance);
+export const useEoaUsdcBalance = () => usePolymarketStore((state) => state.eoaUsdcBalance);
+export const useProxyWalletUsdcBalance = () => usePolymarketStore((state) => state.proxyWalletUsdcBalance);
 export const usePositions = () => usePolymarketStore((state) => state.positions);
 export const useOpenOrders = () => usePolymarketStore((state) => state.openOrders);

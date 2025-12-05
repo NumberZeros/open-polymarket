@@ -3,23 +3,25 @@
 /**
  * Withdraw Page
  * 
- * Withdraw USDC.e from wallet on Polygon network
- * User signs ERC20 transfer transaction directly
+ * Withdraw USDC.e from Proxy Wallet (Gnosis Safe) on Polygon network.
+ * Executes Safe transactions with EIP-712 signature (user pays gas).
  */
 
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
-import { usePolymarketStore } from "@/stores/polymarketStore";
-import { useAccount, useWalletClient, usePublicClient } from "wagmi";
+import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import {
   isValidEthereumAddress,
   validateWithdrawAmount,
   createWithdrawPreview,
-  buildEoaWithdrawTx,
+  deriveProxyWalletAddress,
+  isProxyWalletDeployed,
+  getProxyWalletUsdcBalance,
+  formatUsdcAmount,
+  withdrawFromProxyWallet,
   type WithdrawPreview,
-} from "@/lib/polymarket/withdrawService";
-import { formatUsdc } from "@/lib/polymarket/marketApi";
+} from "@/lib/polymarket/proxyWallet";
 import { POLYGON_CONTRACTS } from "@/lib/polymarket/config";
 import {
   Wallet,
@@ -30,13 +32,19 @@ import {
   CheckCircle,
   Info,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 
 export default function WithdrawPage() {
   const { address, isConnected } = useAccount();
-  const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
-  const { usdcBalance, refreshBalances } = usePolymarketStore();
+  const { data: walletClient } = useWalletClient();
+
+  // Proxy Wallet state
+  const [proxyWalletAddress, setProxyWalletAddress] = useState<string | null>(null);
+  const [proxyWalletDeployed, setProxyWalletDeployed] = useState<boolean | null>(null);
+  const [proxyWalletBalance, setProxyWalletBalance] = useState<bigint | null>(null);
+  const [isLoadingWallet, setIsLoadingWallet] = useState(false);
 
   // Form state
   const [destinationAddress, setDestinationAddress] = useState("");
@@ -50,11 +58,49 @@ export default function WithdrawPage() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const balance = (usdcBalance || 0).toString();
+  // Calculate human-readable balance
+  const balanceFormatted = proxyWalletBalance !== null 
+    ? (Number(proxyWalletBalance) / 1e6).toString()
+    : "0";
+
+  // Fetch Proxy Wallet info
+  const fetchProxyWalletInfo = useCallback(async () => {
+    if (!address || !publicClient) return;
+
+    setIsLoadingWallet(true);
+    try {
+      const proxyAddr = deriveProxyWalletAddress(address);
+      setProxyWalletAddress(proxyAddr);
+
+      const deployed = await isProxyWalletDeployed(proxyAddr, publicClient);
+      setProxyWalletDeployed(deployed);
+
+      if (deployed) {
+        const balance = await getProxyWalletUsdcBalance(proxyAddr, publicClient);
+        setProxyWalletBalance(balance);
+      } else {
+        setProxyWalletBalance(BigInt(0));
+      }
+    } catch (err) {
+      console.error("Failed to fetch proxy wallet info:", err);
+    } finally {
+      setIsLoadingWallet(false);
+    }
+  }, [address, publicClient]);
+
+  // Fetch on mount
+  useEffect(() => {
+    fetchProxyWalletInfo();
+  }, [fetchProxyWalletInfo]);
 
   // Validate form
   const validateForm = useCallback(() => {
     setError(null);
+
+    if (!proxyWalletDeployed) {
+      setError("Proxy Wallet not deployed. Please complete Trading Setup first.");
+      return false;
+    }
 
     if (!destinationAddress) {
       setError("Please enter destination address");
@@ -71,31 +117,32 @@ export default function WithdrawPage() {
       return false;
     }
 
-    const validation = validateWithdrawAmount(amount, balance);
+    const validation = validateWithdrawAmount(amount, balanceFormatted);
     if (!validation.valid) {
       setError(validation.error || "Invalid amount");
       return false;
     }
 
     return true;
-  }, [destinationAddress, amount, balance]);
+  }, [destinationAddress, amount, balanceFormatted, proxyWalletDeployed]);
 
   // Create preview
   const handlePreview = useCallback(() => {
     if (!validateForm()) return;
 
-    const withdrawPreview = createWithdrawPreview({
+    const withdrawPreview = createWithdrawPreview(
       destinationAddress,
       amount,
-    });
+      false // NOT gasless - user pays gas
+    );
 
     setPreview(withdrawPreview);
     setShowConfirmation(true);
   }, [validateForm, destinationAddress, amount]);
 
-  // Execute withdrawal
+  // Execute withdrawal from Proxy Wallet via Safe execTransaction
   const handleWithdraw = useCallback(async () => {
-    if (!preview || !walletClient || !address) {
+    if (!preview || !address || !proxyWalletAddress || !publicClient || !walletClient) {
       setError("Wallet not connected");
       return;
     }
@@ -104,36 +151,43 @@ export default function WithdrawPage() {
     setError(null);
 
     try {
-      // Build transaction
-      const tx = buildEoaWithdrawTx({
-        destinationAddress: preview.destinationAddress,
+      // Convert amount to raw USDC (6 decimals)
+      const amountRaw = BigInt(Math.floor(parseFloat(preview.amount) * 1e6));
+
+      console.log("[Withdraw] Executing Proxy Wallet transaction:", {
+        from: proxyWalletAddress,
+        to: preview.destinationAddress,
         amount: preview.amount,
+        amountRaw: amountRaw.toString(),
       });
 
-      console.log("[Withdraw] Sending transaction:", tx);
+      // Execute withdrawal through Proxy Wallet's execCalls function
+      const result = await withdrawFromProxyWallet(
+        {
+          proxyWalletAddress,
+          destinationAddress: preview.destinationAddress,
+          amount: amountRaw,
+        },
+        publicClient,
+        walletClient
+      );
 
-      // Send transaction via wallet
-      const hash = await walletClient.sendTransaction({
-        to: tx.to as `0x${string}`,
-        data: tx.data as `0x${string}`,
-        value: BigInt(0),
-      });
-
-      console.log("[Withdraw] Transaction hash:", hash);
-      setTxHash(hash);
-
-      // Wait for confirmation if publicClient available
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash });
+      if (result.success && result.transactionHash) {
+        console.log("[Withdraw] Transaction hash:", result.transactionHash);
+        setTxHash(result.transactionHash);
+        setSuccess(true);
+        // Refresh balance after withdrawal
+        await fetchProxyWalletInfo();
+      } else {
+        throw new Error(result.error || "Transaction failed");
       }
-
-      setSuccess(true);
-      refreshBalances();
     } catch (e: unknown) {
       console.error("[Withdraw] Error:", e);
       if (e instanceof Error) {
         if (e.message.includes("rejected") || e.message.includes("denied")) {
           setError("Transaction rejected by user");
+        } else if (e.message.includes("insufficient funds")) {
+          setError("Insufficient MATIC for gas. Please add MATIC to your EOA wallet.");
         } else {
           setError(e.message);
         }
@@ -143,11 +197,11 @@ export default function WithdrawPage() {
     } finally {
       setIsWithdrawing(false);
     }
-  }, [preview, walletClient, address, publicClient, refreshBalances]);
+  }, [preview, address, proxyWalletAddress, publicClient, walletClient, fetchProxyWalletInfo]);
 
   // Set max amount
   const handleSetMax = () => {
-    setAmount(balance);
+    setAmount(balanceFormatted);
   };
 
   // Reset form
@@ -250,6 +304,12 @@ export default function WithdrawPage() {
 
               <div className="space-y-4 mb-6">
                 <div className="flex justify-between items-center py-3 border-b border-gray-800">
+                  <span className="text-gray-400">From (Proxy Wallet)</span>
+                  <span className="text-white font-mono text-sm truncate max-w-[200px]">
+                    {proxyWalletAddress?.slice(0, 8)}...{proxyWalletAddress?.slice(-6)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-3 border-b border-gray-800">
                   <span className="text-gray-400">Amount</span>
                   <span className="text-white font-semibold">{preview.amount} USDC.e</span>
                 </div>
@@ -264,13 +324,21 @@ export default function WithdrawPage() {
                   <span className="text-white">Polygon</span>
                 </div>
                 <div className="flex justify-between items-center py-3 border-b border-gray-800">
-                  <span className="text-gray-400">Estimated Gas</span>
-                  <span className="text-white">{preview.estimatedGasCost}</span>
+                  <span className="text-gray-400">Gas Fee</span>
+                  <span className="text-yellow-400">~0.01-0.05 MATIC (paid by you)</span>
                 </div>
                 <div className="flex justify-between items-center py-3">
                   <span className="text-gray-400">You will receive</span>
                   <span className="text-green-400 font-semibold">{preview.finalAmount} USDC.e</span>
                 </div>
+              </div>
+
+              {/* Gas warning */}
+              <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <p className="text-yellow-400 text-sm">
+                  You will need MATIC in your EOA wallet ({address?.slice(0, 8)}...) to pay for gas fees.
+                </p>
               </div>
 
               {error && (
@@ -296,7 +364,7 @@ export default function WithdrawPage() {
                   {isWithdrawing ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Confirming...
+                      Processing...
                     </>
                   ) : (
                     <>
@@ -332,16 +400,76 @@ export default function WithdrawPage() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-white mb-2">Withdraw</h1>
             <p className="text-gray-400">
-              Send USDC.e from your wallet to any Polygon address
+              Withdraw USDC.e from your Proxy Wallet to any Polygon address
             </p>
           </div>
 
-          {/* Balance */}
+          {/* Proxy Wallet Balance */}
           <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-400">Available Balance</span>
-              <span className="text-2xl font-bold text-white">{formatUsdc(usdcBalance || 0)}</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-400">Proxy Wallet Balance</span>
+              <button
+                onClick={fetchProxyWalletInfo}
+                disabled={isLoadingWallet}
+                className="p-1 hover:bg-gray-800 rounded transition-colors"
+                title="Refresh balance"
+              >
+                <RefreshCw className={`w-4 h-4 text-gray-400 ${isLoadingWallet ? "animate-spin" : ""}`} />
+              </button>
             </div>
+            <div className="text-2xl font-bold text-white">
+              {isLoadingWallet ? (
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              ) : proxyWalletBalance !== null ? (
+                `$${formatUsdcAmount(proxyWalletBalance)}`
+              ) : (
+                "$0.00"
+              )}
+            </div>
+            {proxyWalletAddress && (
+              <p className="text-xs text-gray-500 font-mono mt-2">
+                {proxyWalletAddress}
+              </p>
+            )}
+            
+            {/* Proxy Wallet not deployed warning */}
+            {proxyWalletDeployed === false && (
+              <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <p className="text-yellow-400 text-sm">
+                  Proxy Wallet not deployed.{" "}
+                  <Link href="/wallet" className="underline hover:text-yellow-300">
+                    Set up your wallet first →
+                  </Link>
+                </p>
+              </div>
+            )}
+
+            {/* Not deployed warning */}
+            {!proxyWalletDeployed && (
+              <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <p className="text-yellow-400 text-sm">
+                  Proxy Wallet not deployed.{" "}
+                  <Link href="/trading-setup" className="underline hover:text-yellow-300">
+                    Complete Trading Setup first →
+                  </Link>
+                </p>
+              </div>
+            )}
+            
+            {/* No balance warning */}
+            {proxyWalletDeployed && proxyWalletBalance === BigInt(0) && (
+              <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <p className="text-yellow-400 text-sm">
+                  No USDC.e in Proxy Wallet.{" "}
+                  <Link href="/deposit" className="underline hover:text-yellow-300">
+                    Deposit funds first →
+                  </Link>
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Form */}
@@ -385,11 +513,11 @@ export default function WithdrawPage() {
             </div>
 
             {/* Info */}
-            <div className="mb-6 flex items-start gap-2 text-sm text-gray-400 bg-blue-500/10 p-3 rounded-lg">
-              <Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+            <div className="mb-6 flex items-start gap-2 text-sm text-gray-400 bg-yellow-500/10 p-3 rounded-lg">
+              <Info className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
               <p>
-                Withdrawals are sent on the <span className="text-white font-medium">Polygon network</span>. 
-                You will need to pay gas fees in MATIC.
+                <span className="text-yellow-400 font-medium">Gas required:</span>{" "}
+                You need MATIC in your connected wallet to pay for transaction gas (~0.01-0.05 MATIC).
               </p>
             </div>
 
@@ -404,7 +532,7 @@ export default function WithdrawPage() {
             {/* Submit */}
             <button
               onClick={handlePreview}
-              disabled={!amount || !destinationAddress}
+              disabled={!amount || !destinationAddress || !proxyWalletDeployed || proxyWalletBalance === BigInt(0)}
               className="w-full px-4 py-3 bg-blue-600 rounded-lg text-white font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               Preview Withdrawal

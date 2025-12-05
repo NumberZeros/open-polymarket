@@ -43,7 +43,7 @@ export default function WalletPage() {
   const {
     isLoading,
     error,
-    usdcBalance,
+    proxyWalletUsdcBalance,
     credentials,
     setWallet,
     deriveCredentials,

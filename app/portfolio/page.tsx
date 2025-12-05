@@ -26,7 +26,7 @@ export default function PortfolioPage() {
   const {
     isLoading,
     error,
-    usdcBalance,
+    proxyWalletUsdcBalance,
     positions,
     openOrders,
     setWallet,
@@ -113,12 +113,12 @@ export default function PortfolioPage() {
             <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Wallet className="w-5 h-5 text-[#8b5cf6]" />
-                Balance
+                Trading Balance
               </h2>
               <div className="text-4xl font-bold text-[#22c55e]">
-                {formatUsdc(usdcBalance)}
+                {formatUsdc(proxyWalletUsdcBalance)}
               </div>
-              <p className="text-sm text-[#71717a] mt-1">USDC.e on Polygon</p>
+              <p className="text-sm text-[#71717a] mt-1">USDC.e in Proxy Wallet</p>
             </div>
 
             {/* Positions */}
