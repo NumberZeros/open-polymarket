@@ -13,7 +13,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
-import { useAccount, usePublicClient, useWalletClient } from "wagmi";
+import { useAccount, usePublicClient, useWalletClient, useBalance } from "wagmi";
 import {
   checkApprovalStatus,
   buildApprovalTransactions,
@@ -33,6 +33,7 @@ import {
   Shield,
   Zap,
   RefreshCw,
+  HelpCircle,
 } from "lucide-react";
 
 type TxStatus = "idle" | "pending" | "success" | "error";
@@ -41,6 +42,11 @@ export default function TradingSetupPage() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
+  
+  // Get MATIC balance for gas
+  const { data: maticBalance } = useBalance({
+    address: address,
+  });
 
   // State
   const [isLoading, setIsLoading] = useState(false);
@@ -76,6 +82,11 @@ export default function TradingSetupPage() {
     setTxError(null);
 
     try {
+      // Check MATIC balance first
+      if (maticBalance && parseFloat(maticBalance.formatted) < 0.01) {
+        throw new Error("Insufficient MATIC for gas. Please add MATIC to your wallet on Polygon.");
+      }
+
       const hash = await walletClient.sendTransaction({
         to: tx.to as `0x${string}`,
         data: tx.data as `0x${string}`,
@@ -85,7 +96,21 @@ export default function TradingSetupPage() {
       await fetchApprovalStatus();
     } catch (e: unknown) {
       setTxStatus("error");
-      const errorMessage = e instanceof Error ? e.message : "Transaction failed";
+      let errorMessage = "Transaction failed";
+      
+      if (e instanceof Error) {
+        // Parse common error messages
+        if (e.message.includes("Internal JSON-RPC error")) {
+          errorMessage = "Transaction failed. Possible causes: \n• Insufficient MATIC for gas fees\n• Wallet not connected to Polygon network\n• Contract interaction reverted";
+        } else if (e.message.includes("user rejected")) {
+          errorMessage = "Transaction was rejected by user";
+        } else if (e.message.includes("insufficient funds")) {
+          errorMessage = "Insufficient MATIC for gas fees. Please add MATIC to your wallet.";
+        } else {
+          errorMessage = e.message;
+        }
+      }
+      
       setTxError(errorMessage);
     } finally {
       setCurrentTxIndex(-1);
@@ -167,6 +192,29 @@ export default function TradingSetupPage() {
                 </p>
               </div>
             )}
+            
+            {/* MATIC Balance for Gas */}
+            <div className="mt-4 pt-4 border-t border-gray-700">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400">MATIC Balance (for gas)</span>
+                <span className={`font-medium ${
+                  maticBalance && parseFloat(maticBalance.formatted) < 0.1 
+                    ? "text-red-400" 
+                    : "text-white"
+                }`}>
+                  {maticBalance ? `${parseFloat(maticBalance.formatted).toFixed(4)} MATIC` : "Loading..."}
+                </span>
+              </div>
+              {maticBalance && parseFloat(maticBalance.formatted) < 0.1 && (
+                <div className="mt-2 flex items-start gap-2 text-sm text-red-400 bg-red-500/10 p-3 rounded-lg">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <p>
+                    <strong>Insufficient MATIC for gas!</strong> You need at least 0.1 MATIC to execute approval transactions. 
+                    Transfer MATIC to your wallet on Polygon network.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Info Box */}
@@ -209,22 +257,27 @@ export default function TradingSetupPage() {
                 <ApprovalItem
                   label="USDC → CTF Exchange"
                   approved={approvalStatus.usdcAllowanceExchange > BigInt(0)}
+                  tooltip="Allows the CTF Exchange to spend your USDC.e when buying outcome tokens (YES/NO shares). This is required to place BUY orders on regular markets."
                 />
                 <ApprovalItem
                   label="USDC → Neg Risk Exchange"
                   approved={approvalStatus.usdcAllowanceNegRiskExchange > BigInt(0)}
+                  tooltip="Allows the Negative Risk Exchange to spend your USDC.e. Required for trading on multi-outcome markets (e.g., 'Who will win the election?' with multiple candidates)."
                 />
                 <ApprovalItem
                   label="CTF → CTF Exchange"
                   approved={approvalStatus.ctfApprovedExchange}
+                  tooltip="Allows the CTF Exchange to transfer your outcome tokens (YES/NO shares). Required to SELL positions or have your SELL orders filled."
                 />
                 <ApprovalItem
                   label="CTF → Neg Risk Exchange"
                   approved={approvalStatus.ctfApprovedNegRiskExchange}
+                  tooltip="Allows the Negative Risk Exchange to transfer your outcome tokens. Required for selling positions on multi-outcome markets."
                 />
                 <ApprovalItem
                   label="CTF → Neg Risk Adapter"
                   approved={approvalStatus.ctfApprovedNegRiskAdapter}
+                  tooltip="Allows the Neg Risk Adapter to manage your positions. Required for splitting/merging outcome tokens and proper position management on multi-outcome markets."
                 />
 
                 {approvalStatus.isFullyApproved ? (
@@ -329,10 +382,32 @@ export default function TradingSetupPage() {
 }
 
 // Helper components
-function ApprovalItem({ label, approved }: { label: string; approved: boolean }) {
+function ApprovalItem({ label, approved, tooltip }: { label: string; approved: boolean; tooltip?: string }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+
   return (
     <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-      <span className="text-gray-300">{label}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-gray-300">{label}</span>
+        {tooltip && (
+          <div className="relative">
+            <button
+              onMouseEnter={() => setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
+              onClick={() => setShowTooltip(!showTooltip)}
+              className="text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+            {showTooltip && (
+              <div className="absolute z-50 left-0 bottom-full mb-2 w-72 p-3 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
+                <p className="text-sm text-gray-300 leading-relaxed">{tooltip}</p>
+                <div className="absolute left-3 -bottom-1.5 w-3 h-3 bg-gray-900 border-r border-b border-gray-700 rotate-45"></div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <div className="flex items-center gap-2">
         <span className={`text-sm ${approved ? "text-green-400" : "text-gray-500"}`}>
           {approved ? "Approved" : "Not approved"}

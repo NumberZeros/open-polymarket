@@ -6,13 +6,20 @@
  * Wallet setup, deposits, and withdrawals
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { usePolymarketStore } from "@/stores/polymarketStore";
-import { useAccount, useSignTypedData } from "wagmi";
+import { useAccount, useSignTypedData, usePublicClient } from "wagmi";
 import { formatUsdc } from "@/lib/polymarket/marketApi";
 import { POLYGON_CONTRACTS } from "@/lib/polymarket/config";
+import { deploySafe } from "@/lib/polymarket/relayerApi";
+import {
+  deriveProxyWalletAddress,
+  isProxyWalletDeployed,
+  getProxyWalletUsdcBalance,
+  formatUsdcAmount,
+} from "@/lib/polymarket/proxyWallet";
 import {
   Wallet,
   Shield,
@@ -24,11 +31,13 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Key,
+  RefreshCw,
 } from "lucide-react";
 
 export default function WalletPage() {
   const { address, isConnected } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
+  const publicClient = usePublicClient();
 
   // Zustand store
   const {
@@ -43,6 +52,14 @@ export default function WalletPage() {
 
   const status = getStatus();
 
+  // Proxy Wallet state
+  const [proxyWalletAddress, setProxyWalletAddress] = useState<string | null>(null);
+  const [proxyWalletDeployed, setProxyWalletDeployed] = useState<boolean | null>(null);
+  const [proxyWalletBalance, setProxyWalletBalance] = useState<bigint | null>(null);
+  const [isLoadingWallet, setIsLoadingWallet] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deployError, setDeployError] = useState<string | null>(null);
+
   // Sync wallet with store
   useEffect(() => {
     if (isConnected && address) {
@@ -51,6 +68,66 @@ export default function WalletPage() {
       setWallet(null);
     }
   }, [isConnected, address, setWallet]);
+
+  // Fetch Proxy Wallet info
+  const fetchProxyWalletInfo = useCallback(async () => {
+    if (!address || !publicClient) return;
+
+    setIsLoadingWallet(true);
+    try {
+      // Derive proxy wallet address
+      const proxyAddr = deriveProxyWalletAddress(address);
+      setProxyWalletAddress(proxyAddr);
+
+      // Check if deployed
+      const deployed = await isProxyWalletDeployed(proxyAddr, publicClient);
+      setProxyWalletDeployed(deployed);
+
+      // Get balance
+      const balance = await getProxyWalletUsdcBalance(proxyAddr, publicClient);
+      setProxyWalletBalance(balance);
+    } catch (err) {
+      console.error("Failed to fetch proxy wallet info:", err);
+    } finally {
+      setIsLoadingWallet(false);
+    }
+  }, [address, publicClient]);
+
+  // Fetch on mount and address change
+  useEffect(() => {
+    fetchProxyWalletInfo();
+  }, [fetchProxyWalletInfo]);
+
+  // Deploy Proxy Wallet (Safe)
+  const handleDeployProxyWallet = async () => {
+    if (!address) return;
+
+    setIsDeploying(true);
+    setDeployError(null);
+
+    try {
+      const result = await deploySafe(address, async (domain, types, value) => {
+        return signTypedDataAsync({
+          domain: domain as any,
+          types: types as any,
+          primaryType: Object.keys(types as object).find(k => k !== "EIP712Domain") || "SafeTx",
+          message: value as any,
+        });
+      });
+
+      if (result.success) {
+        // Refresh proxy wallet info after deployment
+        await fetchProxyWalletInfo();
+      } else {
+        setDeployError(result.error || "Failed to deploy Proxy Wallet");
+      }
+    } catch (err) {
+      console.error("Deploy error:", err);
+      setDeployError(err instanceof Error ? err.message : "Failed to deploy Proxy Wallet");
+    } finally {
+      setIsDeploying(false);
+    }
+  };
 
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -76,8 +153,7 @@ export default function WalletPage() {
     });
   };
 
-  // Setup steps - Simplified for EOA wallets
-  // EOA wallets don't need Safe deployment, just credentials
+  // Setup steps - Including Proxy Wallet (Safe) status
   const steps = [
     {
       id: "connect",
@@ -87,6 +163,24 @@ export default function WalletPage() {
       action: null as (() => Promise<void>) | null,
       actionLabel: "",
       requiresPrevious: false,
+    },
+    {
+      id: "proxy-wallet",
+      title: "Proxy Wallet (Safe)",
+      description: proxyWalletDeployed
+        ? "Your Proxy Wallet is deployed and ready for trading"
+        : "Deploy your Proxy Wallet to start trading on Polymarket",
+      completed: proxyWalletDeployed === true,
+      action: proxyWalletDeployed === false ? handleDeployProxyWallet : null,
+      actionLabel: "Deploy Proxy Wallet",
+      requiresPrevious: !status.hasWallet,
+      showStatus: true,
+      statusText: proxyWalletDeployed === null
+        ? "Checking..."
+        : proxyWalletDeployed
+        ? "Deployed"
+        : "Not Deployed",
+      isDeploying: isDeploying,
     },
     {
       id: "credentials",
@@ -111,9 +205,23 @@ export default function WalletPage() {
           <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6 mb-8">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-[#a1a1aa] mb-1">Available Balance</p>
-                <div className="text-3xl font-bold text-white">
-                  {formatUsdc(usdcBalance)}
+                <p className="text-sm text-[#a1a1aa] mb-1">Proxy Wallet Balance</p>
+                <div className="text-3xl font-bold text-white flex items-center gap-3">
+                  {isLoadingWallet ? (
+                    <Loader2 className="w-8 h-8 animate-spin text-[#a1a1aa]" />
+                  ) : proxyWalletBalance !== null ? (
+                    `$${formatUsdcAmount(proxyWalletBalance)}`
+                  ) : (
+                    "$0.00"
+                  )}
+                  <button
+                    onClick={fetchProxyWalletInfo}
+                    disabled={isLoadingWallet}
+                    className="p-2 hover:bg-[#27272a] rounded-lg transition-colors"
+                    title="Refresh balance"
+                  >
+                    <RefreshCw className={`w-5 h-5 text-[#a1a1aa] ${isLoadingWallet ? "animate-spin" : ""}`} />
+                  </button>
                 </div>
                 <p className="text-sm text-[#71717a] mt-1">USDC.e on Polygon</p>
               </div>
@@ -162,17 +270,40 @@ export default function WalletPage() {
                       {step.description}
                     </p>
 
+                    {/* Status Badge */}
+                    {(step as any).showStatus && (
+                      <div className="mt-2">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
+                            (step as any).statusText === "Deployed"
+                              ? "bg-[#22c55e]/10 text-[#22c55e]"
+                              : (step as any).statusText === "Checking..."
+                              ? "bg-[#f59e0b]/10 text-[#f59e0b]"
+                              : "bg-[#71717a]/10 text-[#71717a]"
+                          }`}
+                        >
+                          {(step as any).statusText === "Deployed" && (
+                            <CheckCircle className="w-3 h-3" />
+                          )}
+                          {(step as any).statusText === "Checking..." && (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          )}
+                          {(step as any).statusText}
+                        </span>
+                      </div>
+                    )}
+
                     {/* Action Button */}
                     {step.action && !step.completed && (
                       <button
                         onClick={step.action}
-                        disabled={isLoading || step.requiresPrevious}
+                        disabled={isLoading || step.requiresPrevious || (step as any).isDeploying}
                         className="mt-3 px-4 py-2 bg-[#8b5cf6] hover:bg-[#7c3aed] disabled:bg-[#8b5cf6]/50 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                       >
-                        {isLoading ? (
+                        {(isLoading || (step as any).isDeploying) ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : null}
-                        {step.actionLabel}
+                        {(step as any).isDeploying ? "Deploying..." : step.actionLabel}
                       </button>
                     )}
                   </div>
@@ -188,10 +319,56 @@ export default function WalletPage() {
             <h2 className="text-xl font-semibold mb-6">Wallet Addresses</h2>
 
             <div className="space-y-4">
+              {/* Proxy Wallet Address */}
+              {proxyWalletAddress && (
+                <div className="p-4 bg-[#1a1a1e] rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-[#a1a1aa] flex items-center gap-2">
+                      Proxy Wallet (Safe)
+                      {proxyWalletDeployed !== null && (
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-xs ${
+                            proxyWalletDeployed
+                              ? "bg-[#22c55e]/10 text-[#22c55e]"
+                              : "bg-[#71717a]/10 text-[#71717a]"
+                          }`}
+                        >
+                          {proxyWalletDeployed ? "Deployed" : "Not Deployed"}
+                        </span>
+                      )}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => copyToClipboard(proxyWalletAddress, "proxy")}
+                        className="p-1 hover:bg-[#27272a] rounded transition-colors"
+                        title="Copy address"
+                      >
+                        {copied === "proxy" ? (
+                          <CheckCircle className="w-4 h-4 text-[#22c55e]" />
+                        ) : (
+                          <Copy className="w-4 h-4 text-[#a1a1aa]" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => openPolygonScan(proxyWalletAddress)}
+                        className="p-1 hover:bg-[#27272a] rounded transition-colors"
+                        title="View on PolygonScan"
+                      >
+                        <ExternalLink className="w-4 h-4 text-[#a1a1aa]" />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="font-mono text-sm break-all">{proxyWalletAddress}</p>
+                  <p className="text-xs text-[#71717a] mt-2">
+                    This is your trading wallet on Polymarket. Deposit USDC.e here.
+                  </p>
+                </div>
+              )}
+
               {/* EOA Address */}
               <div className="p-4 bg-[#1a1a1e] rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-[#a1a1aa]">EOA Wallet</span>
+                  <span className="text-sm text-[#a1a1aa]">EOA Wallet (Owner)</span>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => copyToClipboard(address!, "eoa")}
@@ -221,53 +398,7 @@ export default function WalletPage() {
           </div>
         )}
 
-        {/* Deposit/Withdraw Info */}
-        {status.hasWallet && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            {/* Deposit */}
-            <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <ArrowDownCircle className="w-8 h-8 text-[#22c55e]" />
-                <h3 className="text-lg font-semibold">Deposit</h3>
-              </div>
-              <p className="text-sm text-[#a1a1aa] mb-4">
-                Send USDC.e to your wallet address on Polygon network.
-              </p>
-              <div className="p-3 bg-[#1a1a1e] rounded-lg mb-4">
-                <p className="text-xs text-[#a1a1aa] mb-1">Token Contract</p>
-                <p className="font-mono text-xs break-all">
-                  {POLYGON_CONTRACTS.USDC}
-                </p>
-              </div>
-              <Link
-                href="/deposit"
-                className="block w-full text-center px-4 py-3 bg-[#22c55e] hover:bg-[#16a34a] rounded-lg font-medium transition-colors"
-              >
-                Deposit from Multiple Networks
-              </Link>
-            </div>
-
-            {/* Withdraw */}
-            <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <ArrowUpCircle className="w-8 h-8 text-[#8b5cf6]" />
-                <h3 className="text-lg font-semibold">Withdraw</h3>
-              </div>
-              <p className="text-sm text-[#a1a1aa] mb-4">
-                Withdraw USDC.e from Polymarket to your wallet.
-              </p>
-              <p className="text-xs text-[#71717a] mb-4">
-                Withdraw to Ethereum/Polygon wallet, no gas fee.
-              </p>
-              <Link
-                href="/withdraw"
-                className="block w-full text-center px-4 py-3 bg-[#8b5cf6] hover:bg-[#7c3aed] rounded-lg font-medium transition-colors"
-              >
-                Withdraw
-              </Link>
-            </div>
-          </div>
-        )}
+      
 
         {/* API Credentials Info */}
         {credentials && (
@@ -299,10 +430,10 @@ export default function WalletPage() {
         )}
 
         {/* Error */}
-        {error && (
+        {(error || deployError) && (
           <div className="mt-4 p-4 bg-[#ef4444]/10 border border-[#ef4444]/30 rounded-lg text-[#ef4444] flex items-center gap-2">
             <AlertCircle className="w-5 h-5" />
-            {error}
+            {error || deployError}
           </div>
         )}
       </main>
