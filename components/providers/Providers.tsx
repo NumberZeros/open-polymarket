@@ -4,10 +4,10 @@
  * Client-side Providers Wrapper
  * 
  * This component wraps all providers that need client-side only rendering
+ * Note: State management is now handled by Zustand (stores/polymarketStore.ts)
  */
 
 import dynamic from "next/dynamic";
-import { PolymarketProvider } from "@/contexts/PolymarketContext";
 
 // Dynamic import Web3Provider to avoid SSR issues with WalletConnect/indexedDB
 const Web3Provider = dynamic(
@@ -29,9 +29,7 @@ interface ProvidersProps {
 export function Providers({ children }: ProvidersProps) {
   return (
     <Web3Provider>
-      <PolymarketProvider>
-        {children}
-      </PolymarketProvider>
+      {children}
     </Web3Provider>
   );
 }

@@ -8,7 +8,8 @@
 
 import { useEffect } from "react";
 import { Header } from "@/components/layout/Header";
-import { usePolymarket } from "@/contexts/PolymarketContext";
+import { usePolymarketStore } from "@/stores/polymarketStore";
+import { useAccount } from "wagmi";
 import { formatUsdc } from "@/lib/polymarket/marketApi";
 import { 
   Wallet, 
@@ -21,16 +22,29 @@ import {
 } from "lucide-react";
 
 export default function PortfolioPage() {
+  const { address, isConnected } = useAccount();
   const {
-    status,
     isLoading,
     error,
     usdcBalance,
     positions,
     openOrders,
+    setWallet,
     refreshBalances,
     cancelUserOrder,
-  } = usePolymarket();
+    getStatus,
+  } = usePolymarketStore();
+
+  const status = getStatus();
+
+  // Sync wallet with store
+  useEffect(() => {
+    if (isConnected && address) {
+      setWallet(address);
+    } else {
+      setWallet(null);
+    }
+  }, [isConnected, address, setWallet]);
 
   useEffect(() => {
     if (status.canTrade) {

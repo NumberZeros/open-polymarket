@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { usePolymarket } from "@/contexts/PolymarketContext";
+import { usePolymarketStore } from "@/stores/polymarketStore";
 import { getOrderBook, calculateMarketPrice } from "@/lib/polymarket/marketApi";
 import { estimateBuy, estimateSell } from "@/lib/polymarket/tradingApi";
 import type { Market, OrderBook, TradeEstimate } from "@/lib/polymarket/types";
@@ -19,7 +19,8 @@ interface OrderFormProps {
 }
 
 export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
-  const { status, placeOrder, isLoading: contextLoading } = usePolymarket();
+  const { placeOrder, isLoading: storeLoading, getStatus } = usePolymarketStore();
+  const status = getStatus();
   
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [amount, setAmount] = useState<string>("");
@@ -231,14 +232,14 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
       {/* Submit Button */}
       <button
         type="submit"
-        disabled={isLoading || contextLoading || !amount || !status.canTrade}
+        disabled={isLoading || storeLoading || !amount || !status.canTrade}
         className={`w-full py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
           side === "BUY"
             ? "bg-[#22c55e] hover:bg-[#16a34a] disabled:bg-[#22c55e]/50"
             : "bg-[#ef4444] hover:bg-[#dc2626] disabled:bg-[#ef4444]/50"
         } disabled:cursor-not-allowed`}
       >
-        {isLoading || contextLoading ? (
+        {isLoading || storeLoading ? (
           <Loader2 className="w-5 h-5 animate-spin" />
         ) : (
           <>

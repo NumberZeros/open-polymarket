@@ -8,11 +8,12 @@
 
 import Link from "next/link";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { usePolymarket } from "@/contexts/PolymarketContext";
+import { usePolymarketStore } from "@/stores/polymarketStore";
 import { TrendingUp, Wallet } from "lucide-react";
 
 export function Header() {
-  const { status, usdcBalance } = usePolymarket();
+  const { usdcBalance, getStatus } = usePolymarketStore();
+  const status = getStatus();
 
   return (
     <header className="sticky top-0 z-50 bg-[#121214]/80 backdrop-blur-md border-b border-[#27272a]">

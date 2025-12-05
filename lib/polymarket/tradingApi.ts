@@ -93,65 +93,73 @@ async function authenticatedFetch<T>(
 
 // ============= API Key Management =============
 
+// CLOB Auth domain for EIP-712 signing
+const CLOB_AUTH_DOMAIN = {
+  name: "ClobAuthDomain",
+  version: "1",
+  chainId: 137, // Polygon
+};
+
+const CLOB_AUTH_TYPES = {
+  ClobAuth: [
+    { name: "address", type: "address" },
+    { name: "timestamp", type: "string" },
+    { name: "nonce", type: "uint256" },
+    { name: "message", type: "string" },
+  ],
+};
+
+const MSG_TO_SIGN = "This message attests that I control the given wallet";
+
 /**
  * Derive API key from wallet signature
- * This requires the user to sign a message
+ * Uses EIP-712 typed data signing for Level 1 auth
+ * Calls internal proxy to avoid CORS issues
  */
 export async function deriveApiKey(
   walletAddress: string,
-  signMessage: (message: string) => Promise<string>
+  signTypedData: (domain: object, types: object, value: object) => Promise<string>
 ): Promise<TradingCredentials> {
-  const nonce = Math.floor(Date.now() / 1000);
-  const message = `Polymarket API Key Derivation\nTimestamp: ${nonce}`;
-  
-  const signature = await signMessage(message);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const nonce = 0;
 
-  const response = await fetch(`${POLYMARKET_API.CLOB}/auth/derive-api-key`, {
+  // Sign EIP-712 message
+  const signature = await signTypedData(
+    CLOB_AUTH_DOMAIN,
+    CLOB_AUTH_TYPES,
+    {
+      address: walletAddress,
+      timestamp: timestamp.toString(),
+      nonce: BigInt(nonce),
+      message: MSG_TO_SIGN,
+    }
+  );
+
+  // Call internal proxy to avoid CORS
+  const response = await fetch("/api/auth/derive-api-key", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({
       address: walletAddress,
       signature,
+      timestamp,
       nonce,
     }),
   });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || "Failed to derive API key");
+    throw new Error(error.message || error.error || "Failed to derive API key");
   }
 
-  return response.json();
-}
-
-/**
- * Create new API key (requires wallet signature)
- */
-export async function createApiKey(
-  walletAddress: string,
-  signMessage: (message: string) => Promise<string>
-): Promise<TradingCredentials> {
-  const nonce = Math.floor(Date.now() / 1000);
-  const message = `Create Polymarket API Key\nTimestamp: ${nonce}`;
-  
-  const signature = await signMessage(message);
-
-  const response = await fetch(`${POLYMARKET_API.CLOB}/auth/api-key`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      address: walletAddress,
-      signature,
-      nonce,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || "Failed to create API key");
-  }
-
-  return response.json();
+  const data = await response.json();
+  return {
+    apiKey: data.apiKey,
+    secret: data.secret,
+    passphrase: data.passphrase,
+  };
 }
 
 // ============= Order Management =============

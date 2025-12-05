@@ -6,10 +6,10 @@
  * Wallet setup, deposits, and withdrawals
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/layout/Header";
-import { usePolymarket } from "@/contexts/PolymarketContext";
-import { useAccount } from "wagmi";
+import { usePolymarketStore } from "@/stores/polymarketStore";
+import { useAccount, useSignTypedData } from "wagmi";
 import { formatUsdc } from "@/lib/polymarket/marketApi";
 import { POLYGON_CONTRACTS } from "@/lib/polymarket/config";
 import {
@@ -26,18 +26,30 @@ import {
 } from "lucide-react";
 
 export default function WalletPage() {
-  const { address } = useAccount();
+  const { address, isConnected } = useAccount();
+  const { signTypedDataAsync } = useSignTypedData();
+
+  // Zustand store
   const {
-    status,
     isLoading,
     error,
-    safeAddress,
     usdcBalance,
-    deploySafeWallet,
-    setupApprovals,
-    deriveCredentials,
     credentials,
-  } = usePolymarket();
+    setWallet,
+    deriveCredentials,
+    getStatus,
+  } = usePolymarketStore();
+
+  const status = getStatus();
+
+  // Sync wallet with store
+  useEffect(() => {
+    if (isConnected && address) {
+      setWallet(address);
+    } else {
+      setWallet(null);
+    }
+  }, [isConnected, address, setWallet]);
 
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -51,40 +63,38 @@ export default function WalletPage() {
     window.open(`https://polygonscan.com/address/${address}`, "_blank");
   };
 
-  // Setup steps
+  // Action handlers
+  const handleDeriveCredentials = async () => {
+    await deriveCredentials(async (domain, types, value) => {
+      return signTypedDataAsync({
+        domain: domain as any,
+        types: types as any,
+        primaryType: "ClobAuth",
+        message: value as any,
+      });
+    });
+  };
+
+  // Setup steps - Simplified for EOA wallets
+  // EOA wallets don't need Safe deployment, just credentials
   const steps = [
     {
       id: "connect",
-      title: "Connect Wallet",
-      description: "Connect your MetaMask or other Web3 wallet",
+      title: "Kết nối Wallet",
+      description: "Kết nối MetaMask hoặc Web3 wallet của bạn",
       completed: status.hasWallet,
-      action: null, // Handled by RainbowKit
-    },
-    {
-      id: "safe",
-      title: "Deploy Safe Wallet",
-      description: "Create a Safe wallet for secure trading",
-      completed: !!safeAddress,
-      action: deploySafeWallet,
-      actionLabel: "Deploy Safe",
-    },
-    {
-      id: "approvals",
-      title: "Setup Approvals",
-      description: "Approve token spending for trading",
-      completed: false, // We don't track this currently
-      action: setupApprovals,
-      actionLabel: "Setup Approvals",
-      requiresPrevious: !safeAddress,
+      action: null as (() => Promise<void>) | null,
+      actionLabel: "",
+      requiresPrevious: false,
     },
     {
       id: "credentials",
-      title: "Derive Trading Credentials",
-      description: "Sign to derive your API credentials",
+      title: "Tạo Trading Credentials",
+      description: "Ký xác nhận để tạo API credentials cho trading",
       completed: !!credentials,
-      action: deriveCredentials,
-      actionLabel: "Derive Credentials",
-      requiresPrevious: !safeAddress,
+      action: handleDeriveCredentials,
+      actionLabel: "Tạo Credentials",
+      requiresPrevious: !status.hasWallet,
     },
   ];
 
@@ -205,55 +215,22 @@ export default function WalletPage() {
                 <p className="font-mono text-sm break-all">{address}</p>
               </div>
 
-              {/* Safe Address */}
-              {safeAddress && (
-                <div className="p-4 bg-[#1a1a1e] rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-[#a1a1aa]">
-                      Safe Wallet (Trading)
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => copyToClipboard(safeAddress, "safe")}
-                        className="p-1 hover:bg-[#27272a] rounded transition-colors"
-                        title="Copy address"
-                      >
-                        {copied === "safe" ? (
-                          <CheckCircle className="w-4 h-4 text-[#22c55e]" />
-                        ) : (
-                          <Copy className="w-4 h-4 text-[#a1a1aa]" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => openPolygonScan(safeAddress)}
-                        className="p-1 hover:bg-[#27272a] rounded transition-colors"
-                        title="View on PolygonScan"
-                      >
-                        <ExternalLink className="w-4 h-4 text-[#a1a1aa]" />
-                      </button>
-                    </div>
-                  </div>
-                  <p className="font-mono text-sm break-all">{safeAddress}</p>
-                  <p className="text-xs text-[#71717a] mt-2">
-                    Deposit USDC.e to this address to fund your trading account
-                  </p>
-                </div>
-              )}
+              {/* Safe Address - Now just shows EOA as trading address */}
             </div>
           </div>
         )}
 
         {/* Deposit/Withdraw Info */}
-        {safeAddress && (
+        {status.hasWallet && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             {/* Deposit */}
             <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6">
               <div className="flex items-center gap-3 mb-4">
                 <ArrowDownCircle className="w-8 h-8 text-[#22c55e]" />
-                <h3 className="text-lg font-semibold">Deposit</h3>
+                <h3 className="text-lg font-semibold">Nạp tiền</h3>
               </div>
               <p className="text-sm text-[#a1a1aa] mb-4">
-                Send USDC.e to your Safe wallet address on Polygon network.
+                Gửi USDC.e đến địa chỉ wallet của bạn trên mạng Polygon.
               </p>
               <div className="p-3 bg-[#1a1a1e] rounded-lg mb-4">
                 <p className="text-xs text-[#a1a1aa] mb-1">Token Contract</p>
@@ -267,7 +244,7 @@ export default function WalletPage() {
                 rel="noopener noreferrer"
                 className="block w-full text-center px-4 py-3 bg-[#22c55e] hover:bg-[#16a34a] rounded-lg font-medium transition-colors"
               >
-                Get USDC.e on Uniswap
+                Mua USDC.e trên Uniswap
               </a>
             </div>
 
@@ -275,21 +252,22 @@ export default function WalletPage() {
             <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6">
               <div className="flex items-center gap-3 mb-4">
                 <ArrowUpCircle className="w-8 h-8 text-[#8b5cf6]" />
-                <h3 className="text-lg font-semibold">Withdraw</h3>
+                <h3 className="text-lg font-semibold">Rút tiền</h3>
               </div>
               <p className="text-sm text-[#a1a1aa] mb-4">
-                Withdraw USDC.e from your Safe wallet to any address.
+                Rút USDC.e từ Polymarket về ví của bạn.
               </p>
               <p className="text-xs text-[#71717a] mb-4">
-                Withdrawals are processed through the Polymarket relayer
-                (gasless).
+                Truy cập polymarket.com để rút tiền về ví.
               </p>
-              <button
-                disabled
-                className="w-full px-4 py-3 bg-[#27272a] rounded-lg font-medium text-[#71717a] cursor-not-allowed"
+              <a
+                href="https://polymarket.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full text-center px-4 py-3 bg-[#8b5cf6] hover:bg-[#7c3aed] rounded-lg font-medium transition-colors"
               >
-                Coming Soon
-              </button>
+                Đến Polymarket
+              </a>
             </div>
           </div>
         )}
