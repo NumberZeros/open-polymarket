@@ -45,6 +45,24 @@ export function Header() {
             >
               Wallet
             </Link>
+            <Link
+              href="/deposit"
+              className="text-[#a1a1aa] hover:text-white transition-colors"
+            >
+              Deposit
+            </Link>
+            <Link
+              href="/withdraw"
+              className="text-[#a1a1aa] hover:text-white transition-colors"
+            >
+              Withdraw
+            </Link>
+            <Link
+              href="/trading-setup"
+              className="text-[#a1a1aa] hover:text-white transition-colors"
+            >
+              Trading Setup
+            </Link>
           </nav>
 
           {/* Right side */}

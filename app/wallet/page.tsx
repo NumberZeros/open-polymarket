@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { usePolymarketStore } from "@/stores/polymarketStore";
 import { useAccount, useSignTypedData } from "wagmi";
@@ -80,8 +81,8 @@ export default function WalletPage() {
   const steps = [
     {
       id: "connect",
-      title: "Kết nối Wallet",
-      description: "Kết nối MetaMask hoặc Web3 wallet của bạn",
+      title: "Connect Wallet",
+      description: "Connect your MetaMask or Web3 wallet",
       completed: status.hasWallet,
       action: null as (() => Promise<void>) | null,
       actionLabel: "",
@@ -89,11 +90,11 @@ export default function WalletPage() {
     },
     {
       id: "credentials",
-      title: "Tạo Trading Credentials",
-      description: "Ký xác nhận để tạo API credentials cho trading",
+      title: "Create Trading Credentials",
+      description: "Sign to create API credentials for trading",
       completed: !!credentials,
       action: handleDeriveCredentials,
-      actionLabel: "Tạo Credentials",
+      actionLabel: "Create Credentials",
       requiresPrevious: !status.hasWallet,
     },
   ];
@@ -227,10 +228,10 @@ export default function WalletPage() {
             <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6">
               <div className="flex items-center gap-3 mb-4">
                 <ArrowDownCircle className="w-8 h-8 text-[#22c55e]" />
-                <h3 className="text-lg font-semibold">Nạp tiền</h3>
+                <h3 className="text-lg font-semibold">Deposit</h3>
               </div>
               <p className="text-sm text-[#a1a1aa] mb-4">
-                Gửi USDC.e đến địa chỉ wallet của bạn trên mạng Polygon.
+                Send USDC.e to your wallet address on Polygon network.
               </p>
               <div className="p-3 bg-[#1a1a1e] rounded-lg mb-4">
                 <p className="text-xs text-[#a1a1aa] mb-1">Token Contract</p>
@@ -238,36 +239,32 @@ export default function WalletPage() {
                   {POLYGON_CONTRACTS.USDC}
                 </p>
               </div>
-              <a
-                href={`https://app.uniswap.org/swap?chain=polygon&outputCurrency=${POLYGON_CONTRACTS.USDC}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href="/deposit"
                 className="block w-full text-center px-4 py-3 bg-[#22c55e] hover:bg-[#16a34a] rounded-lg font-medium transition-colors"
               >
-                Mua USDC.e trên Uniswap
-              </a>
+                Deposit from Multiple Networks
+              </Link>
             </div>
 
             {/* Withdraw */}
             <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6">
               <div className="flex items-center gap-3 mb-4">
                 <ArrowUpCircle className="w-8 h-8 text-[#8b5cf6]" />
-                <h3 className="text-lg font-semibold">Rút tiền</h3>
+                <h3 className="text-lg font-semibold">Withdraw</h3>
               </div>
               <p className="text-sm text-[#a1a1aa] mb-4">
-                Rút USDC.e từ Polymarket về ví của bạn.
+                Withdraw USDC.e from Polymarket to your wallet.
               </p>
               <p className="text-xs text-[#71717a] mb-4">
-                Truy cập polymarket.com để rút tiền về ví.
+                Withdraw to Ethereum/Polygon wallet, no gas fee.
               </p>
-              <a
-                href="https://polymarket.com"
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href="/withdraw"
                 className="block w-full text-center px-4 py-3 bg-[#8b5cf6] hover:bg-[#7c3aed] rounded-lg font-medium transition-colors"
               >
-                Đến Polymarket
-              </a>
+                Withdraw
+              </Link>
             </div>
           </div>
         )}

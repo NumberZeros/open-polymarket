@@ -1,12 +1,10 @@
 /**
  * Polymarket Signing Server - API Route
  *
- * This is an internal signing server for the Builder Program.
- * It signs requests using the Builder API credentials stored server-side.
- *
- * This route handles:
- * - HMAC signature generation for Polymarket API requests
- * - Secure credential storage (server-side only)
+ * Generates HMAC signatures for authenticated CLOB API requests.
+ * Uses Builder credentials stored server-side.
+ * 
+ * Based on: https://github.com/Polymarket/clob-client/blob/main/src/headers/index.ts
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -21,32 +19,40 @@ const BUILDER_CREDENTIALS = {
 
 interface SigningRequest {
   method: string;
-  path: string;
+  requestPath: string;
   body?: string;
   timestamp?: number;
+  address: string;
 }
 
 /**
- * Generate HMAC signature for Polymarket API
+ * Generate HMAC signature for Polymarket CLOB API
+ * Format: HMAC_SHA256(base64_decode(secret), timestamp + method + requestPath + body)
+ * Result: base64 encoded
  */
-function generateSignature(
+function buildHmacSignature(
   secret: string,
-  timestamp: number,
+  timestamp: string,
   method: string,
-  path: string,
+  requestPath: string,
   body: string = ""
 ): string {
-  const message = `${timestamp}${method}${path}${body}`;
-  // Use base64 decoding that works in both Node.js and Edge runtime
-  const secretBuffer = Uint8Array.from(atob(secret), (c) => c.charCodeAt(0));
-  const hmac = crypto.createHmac("sha256", secretBuffer);
+  const message = timestamp + method + requestPath + body;
+  
+  // Secret is base64 encoded, decode it first
+  const keyBuffer = Buffer.from(secret, "base64");
+  const key = new Uint8Array(keyBuffer.buffer, keyBuffer.byteOffset, keyBuffer.byteLength);
+  const hmac = crypto.createHmac("sha256", key);
   hmac.update(message);
+  
   return hmac.digest("base64");
 }
 
 /**
  * POST /api/sign
- * Sign a request for Polymarket API
+ * 
+ * Generate L2 authentication headers for CLOB API requests.
+ * Returns signed headers that client can use to call CLOB API.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -59,7 +65,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Signing server not configured",
-          message: "Builder credentials are not set",
+          message: "Builder credentials are not set. Set POLY_BUILDER_API_KEY, POLY_BUILDER_SECRET, POLY_BUILDER_PASSPHRASE in .env",
         },
         { status: 500 }
       );
@@ -68,33 +74,38 @@ export async function POST(request: NextRequest) {
     // Parse request body
     const body: SigningRequest = await request.json();
 
-    if (!body.method || !body.path) {
+    if (!body.method || !body.requestPath || !body.address) {
       return NextResponse.json(
         {
           error: "Invalid request",
-          message: "method and path are required",
+          message: "method, requestPath, and address are required",
         },
         { status: 400 }
       );
     }
 
     // Generate timestamp if not provided
-    const timestamp = body.timestamp || Math.floor(Date.now() / 1000);
+    const timestamp = body.timestamp ?? Math.floor(Date.now() / 1000);
+    const timestampStr = timestamp.toString();
 
-    // Generate signature
-    const signature = generateSignature(
+    // Generate HMAC signature
+    const signature = buildHmacSignature(
       BUILDER_CREDENTIALS.secret,
-      timestamp,
+      timestampStr,
       body.method.toUpperCase(),
-      body.path,
+      body.requestPath,
       body.body || ""
     );
 
+    // Return L2 auth headers
     return NextResponse.json({
-      signature,
-      timestamp,
-      key: BUILDER_CREDENTIALS.key,
-      passphrase: BUILDER_CREDENTIALS.passphrase,
+      headers: {
+        POLY_ADDRESS: body.address,
+        POLY_SIGNATURE: signature,
+        POLY_TIMESTAMP: timestampStr,
+        POLY_API_KEY: BUILDER_CREDENTIALS.key,
+        POLY_PASSPHRASE: BUILDER_CREDENTIALS.passphrase,
+      },
     });
   } catch (error) {
     console.error("[Signing Server] Error:", error);
@@ -124,5 +135,6 @@ export async function GET() {
     service: "bethub-signing-server",
     timestamp: new Date().toISOString(),
     configured: isConfigured,
+    keyPrefix: isConfigured ? BUILDER_CREDENTIALS.key.slice(0, 8) + "..." : null,
   });
 }

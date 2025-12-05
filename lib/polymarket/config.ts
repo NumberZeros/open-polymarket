@@ -37,7 +37,16 @@ export const POLYGON_CONTRACTS = {
   NEG_RISK_CTF_EXCHANGE: "0xC5d563A36AE78145C45a50134d48A1215220f80a",
   /** Neg Risk Adapter */
   NEG_RISK_ADAPTER: "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296",
+  
+  // Proxy Wallet Factory
+  /** Safe Proxy Factory - Used to derive Proxy Wallet addresses */
+  SAFE_PROXY_FACTORY: "0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b",
 } as const;
+
+// ============= Proxy Wallet Constants =============
+
+/** Safe init code hash - Used to derive Proxy Wallet addresses via CREATE2 */
+export const SAFE_INIT_CODE_HASH = "0x2bce2127ff07fb632d16c8347c4ebf501f4841168bed00d9e6ef715ddb6fcecf";
 
 // ============= Token Information =============
 
@@ -74,30 +83,16 @@ export const POLYMARKET_API = {
 
 // ============= Builder Credentials =============
 
+/**
+ * Builder credentials are only accessible server-side via API routes
+ * See /api/sign/route.ts for implementation
+ * 
+ * Client code should call /api/sign to get authenticated headers
+ */
 export interface BuilderApiCredentials {
   key: string;
   secret: string;
   passphrase: string;
-}
-
-/**
- * Get Builder Program credentials from environment variables
- * Only use on client side with NEXT_PUBLIC_ prefix
- */
-export function getBuilderCredentials(): BuilderApiCredentials {
-  return {
-    key: process.env.NEXT_PUBLIC_POLY_BUILDER_API_KEY || "",
-    secret: process.env.NEXT_PUBLIC_POLY_BUILDER_SECRET || "",
-    passphrase: process.env.NEXT_PUBLIC_POLY_BUILDER_PASSPHRASE || "",
-  };
-}
-
-/**
- * Check if Builder credentials are configured
- */
-export function hasBuilderCredentials(): boolean {
-  const creds = getBuilderCredentials();
-  return !!(creds.key && creds.secret && creds.passphrase);
 }
 
 // ============= UI Theme (Polymarket-style) =============

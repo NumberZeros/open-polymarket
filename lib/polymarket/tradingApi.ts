@@ -3,6 +3,8 @@
  *
  * Handles authenticated trading operations with Polymarket CLOB API.
  * Uses the internal signing server for Builder attribution.
+ * 
+ * Based on: https://github.com/Polymarket/clob-client
  */
 
 import { POLYMARKET_API } from "./config";
@@ -24,62 +26,72 @@ export interface TradingCredentials {
   passphrase: string;
 }
 
-export interface SignedHeaders {
-  "POLY-ADDRESS": string;
-  "POLY-SIGNATURE": string;
-  "POLY-TIMESTAMP": string;
-  "POLY-API-KEY": string;
-  "POLY-PASSPHRASE": string;
+export interface L2Headers {
+  POLY_ADDRESS: string;
+  POLY_SIGNATURE: string;
+  POLY_TIMESTAMP: string;
+  POLY_API_KEY: string;
+  POLY_PASSPHRASE: string;
 }
 
 // ============= Internal Signing =============
 
 /**
- * Get signed headers from internal signing server
+ * Get L2 auth headers from internal signing server
+ * Server generates HMAC signature using Builder credentials
  */
-async function getSignedHeaders(
+async function getL2Headers(
   method: string,
-  path: string,
+  requestPath: string,
+  walletAddress: string,
   body?: string
-): Promise<{ signature: string; timestamp: number; key: string; passphrase: string }> {
+): Promise<L2Headers> {
   const response = await fetch("/api/sign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ method, path, body }),
+    body: JSON.stringify({ 
+      method, 
+      requestPath, 
+      body,
+      address: walletAddress,
+    }),
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await response.json().catch(() => ({}));
     throw new Error(error.message || "Failed to sign request");
   }
 
-  return response.json();
+  const data = await response.json();
+  return data.headers;
 }
 
 /**
  * Make authenticated request to CLOB API
+ * Uses L2 auth with HMAC signature
  */
 async function authenticatedFetch<T>(
   method: string,
-  path: string,
+  requestPath: string,
   walletAddress: string,
   body?: Record<string, unknown>
 ): Promise<T> {
   const bodyStr = body ? JSON.stringify(body) : undefined;
-  const signed = await getSignedHeaders(method, path, bodyStr);
+  const headers = await getL2Headers(method, requestPath, walletAddress, bodyStr);
 
-  const headers: HeadersInit = {
+  // Use underscore format headers as per Polymarket CLOB client
+  const fetchHeaders: HeadersInit = {
     "Content-Type": "application/json",
-    "POLY-ADDRESS": walletAddress,
-    "POLY-SIGNATURE": signed.signature,
-    "POLY-TIMESTAMP": signed.timestamp.toString(),
-    "POLY-API-KEY": signed.key,
-    "POLY-PASSPHRASE": signed.passphrase,
+    "POLY_ADDRESS": headers.POLY_ADDRESS,
+    "POLY_SIGNATURE": headers.POLY_SIGNATURE,
+    "POLY_TIMESTAMP": headers.POLY_TIMESTAMP,
+    "POLY_API_KEY": headers.POLY_API_KEY,
+    "POLY_PASSPHRASE": headers.POLY_PASSPHRASE,
   };
 
-  const response = await fetch(`${POLYMARKET_API.CLOB}${path}`, {
+  const response = await fetch(`${POLYMARKET_API.CLOB}${requestPath}`, {
     method,
-    headers,
+    headers: fetchHeaders,
     body: bodyStr,
   });
 
