@@ -58,7 +58,7 @@ next-env.d.ts
 logs
 *.log
 
-# Lock files (optional - uncomment if you want to ignore)
-pnpm-lock.yaml
-package-lock.json
-yarn.lock
+# Lock files - DO NOT IGNORE (Vercel needs these)
+# pnpm-lock.yaml
+# package-lock.json
+# yarn.lock

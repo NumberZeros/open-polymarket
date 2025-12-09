@@ -2,6 +2,9 @@
   "name": "bethub",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=18.17.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -17,6 +20,7 @@
     "playwright:install": "playwright install"
   },
   "dependencies": {
+    "@ethersproject/providers": "^5.8.0",
     "@polymarket/builder-relayer-client": "^0.0.8",
     "@polymarket/builder-signing-sdk": "^0.0.8",
     "@polymarket/clob-client": "^4.22.8",
