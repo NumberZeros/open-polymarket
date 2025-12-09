@@ -6,9 +6,10 @@
  * Shows user's positions, open orders, and trade history
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Header } from "@/components/layout/Header";
-import { usePolymarketStore } from "@/stores/polymarketStore";
+import { useWallet } from "@/providers/WalletContext";
+import { useTrading } from "@/providers/TradingProvider";
 import { useAccount } from "wagmi";
 import { formatUsdc } from "@/lib/polymarket/marketApi";
 import { 
@@ -22,35 +23,83 @@ import {
 } from "lucide-react";
 
 export default function PortfolioPage() {
-  const { address, isConnected } = useAccount();
-  const {
-    isLoading,
-    error,
-    proxyWalletUsdcBalance,
-    positions,
-    openOrders,
-    setWallet,
-    refreshBalances,
-    cancelUserOrder,
-    getStatus,
-  } = usePolymarketStore();
+  // Prevent hydration mismatch
+  const [isMounted, setIsMounted] = useState(false);
 
-  const status = getStatus();
+  const { isConnected } = useAccount();
+  const { isConnected: isWalletConnected } = useWallet();
+  const { clobClient, isTradingSessionComplete } = useTrading();
+  
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [proxyWalletBalance, setProxyWalletBalance] = useState(0);
+  const [positions, setPositions] = useState<any[]>([]);
+  const [openOrders, setOpenOrders] = useState<any[]>([]);
 
-  // Sync wallet with store
-  useEffect(() => {
-    if (isConnected && address) {
-      setWallet(address);
-    } else {
-      setWallet(null);
+  const hasWallet = isConnected && isWalletConnected;
+  const canTrade = hasWallet && isTradingSessionComplete && !!clobClient;
+
+  // Fetch portfolio data
+  const refreshBalances = async () => {
+    if (!canTrade || !clobClient) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // TODO: Fetch open orders - getOrders() not available in current CLOB client
+      console.warn('[Portfolio] Order fetching not implemented yet');
+      setOpenOrders([]);
+      
+      // TODO: Fetch positions and balance from CLOB client
+      console.debug('[Portfolio] Positions and balance fetch not fully implemented');
+      setPositions([]);
+      setProxyWalletBalance(0);
+    } catch (err) {
+      console.error('[Portfolio] Failed to refresh balances:', err);
+      setError('Failed to load portfolio data');
+    } finally {
+      setIsLoading(false);
     }
-  }, [isConnected, address, setWallet]);
+  };
+
+  // Mount effect
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
-    if (status.canTrade) {
-      refreshBalances();
+    if (!isMounted || !canTrade) return;
+    refreshBalances();
+  }, [isMounted, canTrade]);
+
+  const cancelUserOrder = async (orderId: string) => {
+    if (!clobClient) return;
+    
+    try {
+      // TODO: Implement proper order cancellation
+      // Note: cancelOrder expects OrderPayload, not just orderId string
+      console.warn('[Portfolio] Order cancellation not fully implemented');
+      setError('Order cancellation not implemented yet');
+    } catch (err) {
+      console.error('[Portfolio] Failed to cancel order:', err);
+      setError('Failed to cancel order');
     }
-  }, [status.canTrade, refreshBalances]);
+  };
+
+  // Prevent hydration mismatch
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen">
+        <Header />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -59,7 +108,7 @@ export default function PortfolioPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold">Portfolio</h1>
-          {status.canTrade && (
+          {canTrade && (
             <button
               onClick={refreshBalances}
               disabled={isLoading}
@@ -72,7 +121,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Not Connected */}
-        {!status.hasWallet && (
+        {!hasWallet && (
           <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-12 text-center">
             <Wallet className="w-16 h-16 text-[#8b5cf6] mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Connect Wallet</h2>
@@ -83,7 +132,7 @@ export default function PortfolioPage() {
         )}
 
         {/* Connected but no trading credentials */}
-        {status.hasWallet && !status.canTrade && (
+        {hasWallet && !canTrade && (
           <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-12 text-center">
             <AlertCircle className="w-16 h-16 text-[#f59e0b] mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Setup Required</h2>
@@ -100,14 +149,14 @@ export default function PortfolioPage() {
         )}
 
         {/* Loading */}
-        {status.canTrade && isLoading && (
+        {canTrade && isLoading && (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-[#8b5cf6]" />
           </div>
         )}
 
         {/* Portfolio Content */}
-        {status.canTrade && !isLoading && (
+        {canTrade && !isLoading && (
           <div className="space-y-8">
             {/* Balance Card */}
             <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6">
@@ -116,7 +165,7 @@ export default function PortfolioPage() {
                 Trading Balance
               </h2>
               <div className="text-4xl font-bold text-[#22c55e]">
-                {formatUsdc(proxyWalletUsdcBalance)}
+                {formatUsdc(proxyWalletBalance)}
               </div>
               <p className="text-sm text-[#71717a] mt-1">USDC.e in Proxy Wallet</p>
             </div>
@@ -168,7 +217,7 @@ export default function PortfolioPage() {
                               href={`/markets/${position.condition_id}`}
                               className="text-white hover:text-[#8b5cf6]"
                             >
-                              {position.market?.question || position.condition_id}
+                              {typeof position.market === 'string' ? position.market : position.market?.question || position.condition_id}
                             </a>
                           </td>
                           <td className="py-3 px-4">

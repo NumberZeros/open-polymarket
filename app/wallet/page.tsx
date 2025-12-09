@@ -9,9 +9,12 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
-import { usePolymarketStore } from "@/stores/polymarketStore";
-import { useAccount, useSignTypedData, usePublicClient } from "wagmi";
+import { useWallet } from "@/providers/WalletContext";
+import { useTrading } from "@/providers/TradingProvider";
+import { useAccount, usePublicClient, useWalletClient, useSignTypedData } from "wagmi";
 import { formatUsdc } from "@/lib/polymarket/marketApi";
+import { createEthersWallet } from "@/lib/polymarket/ethersWallet";
+
 import { POLYGON_CONTRACTS } from "@/lib/polymarket/config";
 import { deploySafe } from "@/lib/polymarket/relayerApi";
 import {
@@ -35,39 +38,32 @@ import {
 } from "lucide-react";
 
 export default function WalletPage() {
+  // Prevent hydration mismatch
+  const [isMounted, setIsMounted] = useState(false);
+
   const { address, isConnected } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
   const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
 
-  // Zustand store
-  const {
-    isLoading,
-    error,
-    proxyWalletUsdcBalance,
-    credentials,
-    setWallet,
-    deriveCredentials,
-    getStatus,
-  } = usePolymarketStore();
-
-  const status = getStatus();
+  // Provider hooks
+  const { isConnected: isWalletConnected } = useWallet();
+  const { 
+    sessionError,
+    tradingSession,
+    initializeTradingSession 
+  } = useTrading();
+  
+  const credentials = tradingSession?.apiCredentials;
 
   // Proxy Wallet state
   const [proxyWalletAddress, setProxyWalletAddress] = useState<string | null>(null);
   const [proxyWalletDeployed, setProxyWalletDeployed] = useState<boolean | null>(null);
-  const [proxyWalletBalance, setProxyWalletBalance] = useState<bigint | null>(null);
+  const [localProxyBalance, setLocalProxyBalance] = useState<bigint | null>(null);
+  const [eoaBalance, setEoaBalance] = useState<bigint | null>(null);
   const [isLoadingWallet, setIsLoadingWallet] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployError, setDeployError] = useState<string | null>(null);
-
-  // Sync wallet with store
-  useEffect(() => {
-    if (isConnected && address) {
-      setWallet(address);
-    } else {
-      setWallet(null);
-    }
-  }, [isConnected, address, setWallet]);
 
   // Fetch Proxy Wallet info
   const fetchProxyWalletInfo = useCallback(async () => {
@@ -83,9 +79,14 @@ export default function WalletPage() {
       const deployed = await isProxyWalletDeployed(proxyAddr, publicClient);
       setProxyWalletDeployed(deployed);
 
-      // Get balance
-      const balance = await getProxyWalletUsdcBalance(proxyAddr, publicClient);
-      setProxyWalletBalance(balance);
+      // Get balances for both EOA and Proxy
+      const [proxyBalance, eoaBal] = await Promise.all([
+        getProxyWalletUsdcBalance(proxyAddr, publicClient),
+        getProxyWalletUsdcBalance(address, publicClient), // Using same function for EOA
+      ]);
+      
+      setLocalProxyBalance(proxyBalance);
+      setEoaBalance(eoaBal);
     } catch (err) {
       console.error("Failed to fetch proxy wallet info:", err);
     } finally {
@@ -93,27 +94,33 @@ export default function WalletPage() {
     }
   }, [address, publicClient]);
 
+  // Mount effect
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // Fetch on mount and address change
   useEffect(() => {
+    if (!isMounted) return;
     fetchProxyWalletInfo();
-  }, [fetchProxyWalletInfo]);
+  }, [isMounted, fetchProxyWalletInfo]);
 
   // Deploy Proxy Wallet (Safe)
   const handleDeployProxyWallet = async () => {
-    if (!address) return;
+    if (!address || !walletClient) return;
 
     setIsDeploying(true);
     setDeployError(null);
 
     try {
-      const result = await deploySafe(address, async (domain, types, value) => {
-        return signTypedDataAsync({
-          domain: domain as any,
-          types: types as any,
-          primaryType: Object.keys(types as object).find(k => k !== "EIP712Domain") || "SafeTx",
-          message: value as any,
-        });
-      });
+      // Create ethers wallet from viem wallet client
+      const ethersWallet = await createEthersWallet();
+      if (!ethersWallet) {
+        throw new Error('Failed to create ethers wallet');
+      }
+
+      // Cast to JsonRpcSigner since createEthersWallet returns a signer
+      const result = await deploySafe(ethersWallet as any);
 
       if (result.success) {
         // Refresh proxy wallet info after deployment
@@ -143,14 +150,11 @@ export default function WalletPage() {
 
   // Action handlers
   const handleDeriveCredentials = async () => {
-    await deriveCredentials(async (domain, types, value) => {
-      return signTypedDataAsync({
-        domain: domain as any,
-        types: types as any,
-        primaryType: "ClobAuth",
-        message: value as any,
-      });
-    });
+    try {
+      await initializeTradingSession();
+    } catch (error) {
+      console.error('Failed to create credentials:', error);
+    }
   };
 
   // Setup steps - Including Proxy Wallet (Safe) status
@@ -159,7 +163,7 @@ export default function WalletPage() {
       id: "connect",
       title: "Connect Wallet",
       description: "Connect your MetaMask or Web3 wallet",
-      completed: status.hasWallet,
+      completed: isConnected,
       action: null as (() => Promise<void>) | null,
       actionLabel: "",
       requiresPrevious: false,
@@ -173,7 +177,7 @@ export default function WalletPage() {
       completed: proxyWalletDeployed === true,
       action: proxyWalletDeployed === false ? handleDeployProxyWallet : null,
       actionLabel: "Deploy Proxy Wallet",
-      requiresPrevious: !status.hasWallet,
+      requiresPrevious: !isConnected,
       showStatus: true,
       statusText: proxyWalletDeployed === null
         ? "Checking..."
@@ -189,9 +193,23 @@ export default function WalletPage() {
       completed: !!credentials,
       action: handleDeriveCredentials,
       actionLabel: "Create Credentials",
-      requiresPrevious: !status.hasWallet,
+      requiresPrevious: !isConnected,
     },
   ];
+
+  // Prevent hydration mismatch
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
+        <Header />
+        <main className="container mx-auto px-4 py-12">
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -200,32 +218,55 @@ export default function WalletPage() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-3xl font-bold mb-8">Wallet Setup</h1>
 
-        {/* Balance Card */}
-        {status.hasWallet && (
-          <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6 mb-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-[#a1a1aa] mb-1">Proxy Wallet Balance</p>
-                <div className="text-3xl font-bold text-white flex items-center gap-3">
-                  {isLoadingWallet ? (
-                    <Loader2 className="w-8 h-8 animate-spin text-[#a1a1aa]" />
-                  ) : proxyWalletBalance !== null ? (
-                    `$${formatUsdcAmount(proxyWalletBalance)}`
-                  ) : (
-                    "$0.00"
-                  )}
-                  <button
-                    onClick={fetchProxyWalletInfo}
-                    disabled={isLoadingWallet}
-                    className="p-2 hover:bg-[#27272a] rounded-lg transition-colors"
-                    title="Refresh balance"
-                  >
-                    <RefreshCw className={`w-5 h-5 text-[#a1a1aa] ${isLoadingWallet ? "animate-spin" : ""}`} />
-                  </button>
+        {/* Balance Cards */}
+        {isConnected && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            {/* EOA Balance */}
+            <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm text-[#a1a1aa] mb-1">EOA Wallet Balance</p>
+                  <div className="text-2xl font-bold text-white">
+                    {isLoadingWallet ? (
+                      <Loader2 className="w-6 h-6 animate-spin text-[#a1a1aa]" />
+                    ) : eoaBalance !== null ? (
+                      `$${formatUsdcAmount(eoaBalance)}`
+                    ) : (
+                      "$0.00"
+                    )}
+                  </div>
+                  <p className="text-xs text-[#71717a] mt-1">Your connected wallet</p>
                 </div>
-                <p className="text-sm text-[#71717a] mt-1">USDC.e on Polygon</p>
+                <Wallet className="w-10 h-10 text-[#3b82f6]" />
               </div>
-              <Wallet className="w-12 h-12 text-[#8b5cf6]" />
+            </div>
+
+            {/* Proxy Wallet Balance */}
+            <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm text-[#a1a1aa] mb-1">Proxy Wallet Balance</p>
+                  <div className="text-2xl font-bold text-white flex items-center gap-2">
+                    {isLoadingWallet ? (
+                      <Loader2 className="w-6 h-6 animate-spin text-[#a1a1aa]" />
+                    ) : localProxyBalance !== null ? (
+                      `$${formatUsdcAmount(localProxyBalance)}`
+                    ) : (
+                      "$0.00"
+                    )}
+                    <button
+                      onClick={fetchProxyWalletInfo}
+                      disabled={isLoadingWallet}
+                      className="p-1.5 hover:bg-[#27272a] rounded-lg transition-colors"
+                      title="Refresh balances"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-[#a1a1aa] ${isLoadingWallet ? "animate-spin" : ""}`} />
+                    </button>
+                  </div>
+                  <p className="text-xs text-[#71717a] mt-1">Trading balance (USDC.e)</p>
+                </div>
+                <Shield className="w-10 h-10 text-[#8b5cf6]" />
+              </div>
             </div>
           </div>
         )}
@@ -297,10 +338,10 @@ export default function WalletPage() {
                     {step.action && !step.completed && (
                       <button
                         onClick={step.action}
-                        disabled={isLoading || step.requiresPrevious || (step as any).isDeploying}
+                        disabled={isLoadingWallet || step.requiresPrevious || (step as any).isDeploying}
                         className="mt-3 px-4 py-2 bg-[#8b5cf6] hover:bg-[#7c3aed] disabled:bg-[#8b5cf6]/50 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                       >
-                        {(isLoading || (step as any).isDeploying) ? (
+                        {(isLoadingWallet || (step as any).isDeploying) ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : null}
                         {(step as any).isDeploying ? "Deploying..." : step.actionLabel}
@@ -314,7 +355,7 @@ export default function WalletPage() {
         </div>
 
         {/* Wallet Addresses */}
-        {status.hasWallet && (
+        {isConnected && (
           <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6 mb-8">
             <h2 className="text-xl font-semibold mb-6">Wallet Addresses</h2>
 
@@ -415,7 +456,7 @@ export default function WalletPage() {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-[#71717a]">API Key</span>
                 <span className="font-mono text-xs text-[#a1a1aa]">
-                  {credentials.apiKey.slice(0, 8)}...
+                  {credentials.key.slice(0, 8)}...
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -430,10 +471,10 @@ export default function WalletPage() {
         )}
 
         {/* Error */}
-        {(error || deployError) && (
+        {(sessionError || deployError) && (
           <div className="mt-4 p-4 bg-[#ef4444]/10 border border-[#ef4444]/30 rounded-lg text-[#ef4444] flex items-center gap-2">
             <AlertCircle className="w-5 h-5" />
-            {error || deployError}
+            {sessionError?.message || deployError}
           </div>
         )}
       </main>

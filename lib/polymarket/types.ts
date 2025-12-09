@@ -5,33 +5,90 @@
 // ============= Market Types =============
 
 export interface Market {
+  // IDs and identifiers (Gamma API uses camelCase)
   id: string;
-  condition_id: string;
-  question_id: string;
+  conditionId?: string;  // Gamma API format
+  condition_id?: string;  // CLOB API format (backwards compat)
+  slug?: string;         // URL slug for navigation
+  market_slug?: string;  // Alternative slug
+  
+  // Market content
   question: string;
   description?: string;
-  market_slug?: string;
-  end_date_iso?: string;
+  outcomes?: string[];
+  
+  // Dates (Gamma API uses camelCase)
+  endDateIso?: string;
+  end_date_iso?: string;  // Backwards compat
+  startDate?: string;
+  gameStartTime?: string;
   game_start_time?: string;
+  secondsDelay?: number;
   seconds_delay?: number;
-  minimum_order_size: string;
-  minimum_tick_size: string;
-  tokens: MarketToken[];
+  
+  // Pricing and tokens
+  tokens?: MarketToken[] | null;  // Can be null from Gamma API
+  outcomePrices?: string; // JSON string of prices
+  outcomes_prices?: string;
+  bestBid?: number;
+  bestAsk?: number;
+  lastTradePrice?: number;
+  
+  // Order parameters
+  minimumOrderSize?: string;
+  minimum_order_size?: string;
+  minimumTickSize?: string;
+  minimum_tick_size?: string;
+  orderMinSize?: number;
+  orderPriceMinTickSize?: number;
+  
+  // Rewards
   rewards?: MarketRewards;
+  
+  // Status
   active: boolean;
   closed: boolean;
   archived: boolean;
-  accepting_orders: boolean;
+  acceptingOrders?: boolean;
+  accepting_orders?: boolean;
+  acceptingOrdersTimestamp?: string;
   accepting_order_timestamp?: string;
-  neg_risk: boolean;
+  
+  // Negative risk
+  negRisk?: boolean;
+  neg_risk?: boolean;
+  negRiskMarketId?: string;
   neg_risk_market_id?: string;
+  negRiskRequestId?: string;
   neg_risk_request_id?: string;
+  
+  // Media
   icon?: string;
   image?: string;
-  // Price info
-  outcomePrices?: string; // JSON string of prices
+  banner?: string;
+  
+  // Volume and liquidity
   volume?: string;
+  volumeNum?: number;
   volume24hr?: string;
+  volume1wk?: string;
+  volume1mo?: string;
+  volume1yr?: string;
+  liquidity?: number | string;
+  liquidityNum?: number;
+  liquidityClob?: number | string;
+  
+  // Display
+  featured?: boolean;
+  competitive?: number;
+  
+  // From events
+  eventTitle?: string;
+  eventSlug?: string;
+  eventId?: string;
+  ticker?: string;
+  clobTokenIds?: string[];
+  spread?: number;
 }
 
 export interface MarketToken {
@@ -105,6 +162,7 @@ export interface OrderResult {
   orderId?: string;
   status?: string;
   error?: string;
+  code?: string;
   orderDetails?: {
     side: string;
     price: number;
@@ -164,7 +222,7 @@ export interface Trade {
 export interface Position {
   asset: string;
   condition_id: string;
-  market: Market;
+  market: Market | string;
   outcome: string;
   price: number;
   size: number;

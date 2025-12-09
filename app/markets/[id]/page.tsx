@@ -1,20 +1,60 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { notFound } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { MarketDetailClient } from "./MarketDetailClient";
-import { getMarket } from "@/lib/polymarket/marketApi";
+import { getMarketBySlug } from "@/lib/polymarket/marketApi";
+import type { Market } from "@/lib/polymarket/types";
 
 interface MarketPageProps {
   params: Promise<{ id: string }>;
 }
 
-export default async function MarketPage({ params }: MarketPageProps) {
-  const { id } = await params;
-  
-  // Fetch market data server-side
-  const market = await getMarket(id);
-  
-  if (!market) {
-    notFound();
+export default function MarketPage({ params }: MarketPageProps) {
+  const [market, setMarket] = useState<Market | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [id, setId] = useState<string>("");
+
+  useEffect(() => {
+    const fetchMarket = async () => {
+      try {
+        const { id: slugId } = await params;
+        setId(slugId);
+        
+        const marketData = await getMarketBySlug(slugId);
+        if (!marketData) {
+          setError("Market not found");
+          return;
+        }
+        
+        setMarket(marketData);
+      } catch (err) {
+        console.error("[MarketPage] Error fetching market:", err);
+        setError("Failed to load market");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMarket();
+  }, [params]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg text-[#a1a1aa]">Loading market...</div>
+      </div>
+    );
+  }
+
+  if (error || !market) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg text-[#ef4444]">{error || "Market not found"}</div>
+      </div>
+    );
   }
 
   return (
@@ -23,19 +63,4 @@ export default async function MarketPage({ params }: MarketPageProps) {
       <MarketDetailClient market={market} />
     </div>
   );
-}
-
-// Generate metadata for SEO
-export async function generateMetadata({ params }: MarketPageProps) {
-  const { id } = await params;
-  const market = await getMarket(id);
-  
-  if (!market) {
-    return { title: "Market Not Found" };
-  }
-
-  return {
-    title: `${market.question} | BetHub`,
-    description: market.description || market.question,
-  };
 }

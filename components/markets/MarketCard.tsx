@@ -16,15 +16,33 @@ interface MarketCardProps {
 }
 
 export function MarketCard({ market }: MarketCardProps) {
-  const prices = parseOutcomePrices(market);
+  // Safely parse prices with error handling
+  let prices = { yes: 0.5, no: 0.5 };
+  try {
+    prices = parseOutcomePrices(market);
+  } catch (error) {
+    console.error('[MarketCard] Error parsing prices:', error, 'Market:', market);
+  }
+  
   const isActive = market.active && !market.closed;
-  const endDate = market.end_date_iso
-    ? new Date(market.end_date_iso)
+  
+  // Get end date (try multiple field names)
+  const endDate = market.endDateIso || market.end_date_iso
+    ? new Date(market.endDateIso || market.end_date_iso || '')
     : null;
+  
+  // Get market ID for navigation (prefer slug, then condition_id variants)
+  const marketId = market.slug || market.market_slug || market.conditionId || market.condition_id;
+  
+  // Safety check
+  if (!marketId) {
+    console.error('[MarketCard] Market missing navigation ID:', market);
+    return null;
+  }
 
   return (
     <Link
-      href={`/markets/${market.condition_id}`}
+      href={`/markets/${marketId}`}
       className="block bg-[#16161a] rounded-xl border border-[#27272a] hover:border-[#8b5cf6]/50 transition-all duration-200 overflow-hidden group"
     >
       {/* Image */}

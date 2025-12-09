@@ -1,379 +1,213 @@
-"use client";
-
 /**
  * Trading Setup Page
  * 
- * Before trading on Polymarket, users need to approve:
- * 1. USDC.e for the CTF Exchange contracts
- * 2. CTF tokens for the Exchange (to sell positions)
+ * Complete one-time setup for Polymarket trading:
+ * 1. Deploy Safe (Proxy Wallet)
+ * 2. Approve USDC + CTF tokens
+ * 3. Create API credentials
  * 
- * This is a ONE-TIME setup per wallet.
+ * After setup, user can trade on /markets page
  */
 
-import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { Header } from "@/components/layout/Header";
-import { useAccount, usePublicClient, useWalletClient, useBalance } from "wagmi";
-import {
-  checkApprovalStatus,
-  buildApprovalTransactions,
-  formatUsdcAmount,
-  type ApprovalStatus,
-  type ApprovalTransaction,
-} from "@/lib/polymarket/depositService";
-import { POLYGON_CONTRACTS } from "@/lib/polymarket/config";
-import {
-  Wallet,
-  ArrowLeft,
-  CheckCircle,
-  Loader2,
-  ExternalLink,
-  AlertCircle,
-  Info,
-  Shield,
-  Zap,
-  RefreshCw,
-  HelpCircle,
-} from "lucide-react";
+"use client";
 
-type TxStatus = "idle" | "pending" | "success" | "error";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
+import { Header } from "@/components/layout/Header";
+import { useWallet } from "@/providers/WalletContext";
+import { useTrading } from "@/providers/TradingProvider";
+import { CheckCircle, Loader2, ArrowRight, Key } from "lucide-react";
+
+type Step = "setup" | "complete";
 
 export default function TradingSetupPage() {
+  const router = useRouter();
   const { address, isConnected } = useAccount();
-  const publicClient = usePublicClient();
-  const { data: walletClient } = useWalletClient();
   
-  // Get MATIC balance for gas
-  const { data: maticBalance } = useBalance({
-    address: address,
-  });
+  // Prevent hydration mismatch
+  const [isMounted, setIsMounted] = useState(false);
+  const [currentStep, setCurrentStep] = useState<Step>("setup");
 
-  // State
-  const [isLoading, setIsLoading] = useState(false);
-  const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus | null>(null);
-  const [pendingTxs, setPendingTxs] = useState<ApprovalTransaction[]>([]);
-  const [currentTxIndex, setCurrentTxIndex] = useState<number>(-1);
-  const [txStatus, setTxStatus] = useState<TxStatus>("idle");
-  const [txError, setTxError] = useState<string | null>(null);
+  // Providers
+  const { eoaAddress } = useWallet();
+  const {
+    tradingSession,
+    currentStep: sessionStep,
+    sessionError,
+    initializeTradingSession,
+    safeAddress
+  } = useTrading();
 
-  // Fetch approval status
-  const fetchApprovalStatus = useCallback(async () => {
-    if (!address || !publicClient) return;
-    
-    setIsLoading(true);
-    try {
-      const status = await checkApprovalStatus(address, publicClient);
-      setApprovalStatus(status);
-      const txs = buildApprovalTransactions(status);
-      setPendingTxs(txs);
-    } catch (e) {
-      console.error("Failed to fetch approval status:", e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [address, publicClient]);
+  // Derived state from session
+  const isSetupComplete = tradingSession?.isSafeDeployed && tradingSession?.hasApiCredentials && tradingSession?.hasApprovals;
+  const isLoading = sessionStep !== "idle" && sessionStep !== "complete";
+  const error = sessionError?.message;
 
-  // Execute single approval transaction
-  const executeApproval = async (tx: ApprovalTransaction, index: number) => {
-    if (!walletClient || !publicClient) return;
-
-    setCurrentTxIndex(index);
-    setTxStatus("pending");
-    setTxError(null);
-
-    try {
-      // Check MATIC balance first
-      if (maticBalance && parseFloat(maticBalance.formatted) < 0.01) {
-        throw new Error("Insufficient MATIC for gas. Please add MATIC to your wallet on Polygon.");
-      }
-
-      const hash = await walletClient.sendTransaction({
-        to: tx.to as `0x${string}`,
-        data: tx.data as `0x${string}`,
-      });
-      await publicClient.waitForTransactionReceipt({ hash });
-      setTxStatus("success");
-      await fetchApprovalStatus();
-    } catch (e: unknown) {
-      setTxStatus("error");
-      let errorMessage = "Transaction failed";
-      
-      if (e instanceof Error) {
-        // Parse common error messages
-        if (e.message.includes("Internal JSON-RPC error")) {
-          errorMessage = "Transaction failed. Possible causes: \n• Insufficient MATIC for gas fees\n• Wallet not connected to Polygon network\n• Contract interaction reverted";
-        } else if (e.message.includes("user rejected")) {
-          errorMessage = "Transaction was rejected by user";
-        } else if (e.message.includes("insufficient funds")) {
-          errorMessage = "Insufficient MATIC for gas fees. Please add MATIC to your wallet.";
-        } else {
-          errorMessage = e.message;
-        }
-      }
-      
-      setTxError(errorMessage);
-    } finally {
-      setCurrentTxIndex(-1);
-    }
-  };
-
-  // Execute all approvals
-  const executeAllApprovals = async () => {
-    if (!walletClient || !publicClient || pendingTxs.length === 0) return;
-
-    for (let i = 0; i < pendingTxs.length; i++) {
-      await executeApproval(pendingTxs[i], i);
-      if (txStatus === "error") break;
-    }
-  };
-
-  // Effects
+  // Mount effect
   useEffect(() => {
-    fetchApprovalStatus();
-  }, [fetchApprovalStatus]);
+    setIsMounted(true);
+  }, []);
 
-  // Not connected
-  if (!isConnected) {
+  // Check wallet connection
+  useEffect(() => {
+    if (!isMounted) return;
+    if (!isConnected || !address) {
+      router.push("/");
+      return;
+    }
+  }, [isMounted, isConnected, address, router]);
+
+  // Update step based on session
+  useEffect(() => {
+    if (!isMounted) return;
+    if (isSetupComplete) {
+      setCurrentStep("complete");
+    }
+  }, [isMounted, isSetupComplete]);
+
+  // Initialize complete trading session (Safe + Approvals + Credentials)
+  const handleStartSetup = async () => {
+    try {
+      await initializeTradingSession();
+      setCurrentStep("complete");
+    } catch (error) {
+      console.error('[TradingSetup] Setup failed:', error);
+    }
+  };
+
+  // Complete - go to markets
+  const handleComplete = () => {
+    router.push("/markets");
+  };
+
+  // Prevent hydration mismatch by not rendering until mounted
+  if (!isMounted) {
     return (
-      <div className="min-h-screen bg-gray-950">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
         <Header />
-        <main className="container mx-auto px-4 py-8">
-          <div className="max-w-lg mx-auto text-center">
-            <Wallet className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-white mb-2">Connect Wallet</h1>
-            <p className="text-gray-400">
-              Please connect your wallet to set up trading
-            </p>
+        <main className="container mx-auto px-4 py-12">
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
           </div>
         </main>
       </div>
     );
   }
 
+  if (!isConnected) {
+    return null;
+  }
+
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
       <Header />
-      <main className="container mx-auto px-4 py-8">
+
+      <main className="container mx-auto px-4 py-12">
         <div className="max-w-2xl mx-auto">
-          {/* Back button */}
-          <Link
-            href="/wallet"
-            className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Wallet
-          </Link>
-
           {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold text-white mb-2">Trading Setup</h1>
-            <p className="text-gray-400">
-              One-time approval to enable trading on Polymarket
-            </p>
+          <div className="text-center mb-12">
+            <h1 className="text-4xl font-bold text-white mb-4">Trading Setup</h1>
+            <p className="text-gray-300">Complete these one-time steps to start trading</p>
           </div>
 
-          {/* Current Balance */}
-          <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-400">USDC.e Balance (Polygon)</span>
-              <span className="text-2xl font-bold text-white">
-                {approvalStatus ? `$${formatUsdcAmount(approvalStatus.usdcBalance)}` : "Loading..."}
-              </span>
-            </div>
-            
-            {approvalStatus && approvalStatus.usdcBalance === BigInt(0) && (
-              <div className="mt-4 flex items-start gap-2 text-sm text-yellow-400 bg-yellow-500/10 p-3 rounded-lg">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <p>
-                  You need USDC.e to trade.{" "}
-                  <Link href="/deposit" className="text-yellow-300 hover:underline">
-                    Deposit funds first →
-                  </Link>
-                </p>
-              </div>
-            )}
-            
-            {/* MATIC Balance for Gas */}
-            <div className="mt-4 pt-4 border-t border-gray-700">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-400">MATIC Balance (for gas)</span>
-                <span className={`font-medium ${
-                  maticBalance && parseFloat(maticBalance.formatted) < 0.1 
-                    ? "text-red-400" 
-                    : "text-white"
-                }`}>
-                  {maticBalance ? `${parseFloat(maticBalance.formatted).toFixed(4)} MATIC` : "Loading..."}
-                </span>
-              </div>
-              {maticBalance && parseFloat(maticBalance.formatted) < 0.1 && (
-                <div className="mt-2 flex items-start gap-2 text-sm text-red-400 bg-red-500/10 p-3 rounded-lg">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <p>
-                    <strong>Insufficient MATIC for gas!</strong> You need at least 0.1 MATIC to execute approval transactions. 
-                    Transfer MATIC to your wallet on Polygon network.
-                  </p>
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-500/10 border border-red-500 rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-0.5">
+                  <svg className="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Info Box */}
-          <div className="bg-blue-500/10 rounded-xl p-4 mb-6 border border-blue-500/30">
-            <div className="flex items-start gap-3">
-              <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-blue-200">
-                <p className="font-medium mb-1">Why do I need to approve?</p>
-                <p className="text-blue-300/70">
-                  Before Polymarket can execute trades on your behalf, you need to give the 
-                  exchange contracts permission to move your USDC and outcome tokens. 
-                  This is a standard ERC-20 approval and only needs to be done once.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Approval Status */}
-          <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-blue-400" />
-                <h2 className="text-lg font-semibold text-white">Approval Status</h2>
-              </div>
-              <button
-                onClick={fetchApprovalStatus}
-                disabled={isLoading}
-                className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 text-gray-400 ${isLoading ? "animate-spin" : ""}`} />
-              </button>
-            </div>
-
-            {isLoading && !approvalStatus ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-gray-500" />
-              </div>
-            ) : approvalStatus ? (
-              <div className="space-y-3">
-                <ApprovalItem
-                  label="USDC → CTF Exchange"
-                  approved={approvalStatus.usdcAllowanceExchange > BigInt(0)}
-                  tooltip="Allows the CTF Exchange to spend your USDC.e when buying outcome tokens (YES/NO shares). This is required to place BUY orders on regular markets."
-                />
-                <ApprovalItem
-                  label="USDC → Neg Risk Exchange"
-                  approved={approvalStatus.usdcAllowanceNegRiskExchange > BigInt(0)}
-                  tooltip="Allows the Negative Risk Exchange to spend your USDC.e. Required for trading on multi-outcome markets (e.g., 'Who will win the election?' with multiple candidates)."
-                />
-                <ApprovalItem
-                  label="CTF → CTF Exchange"
-                  approved={approvalStatus.ctfApprovedExchange}
-                  tooltip="Allows the CTF Exchange to transfer your outcome tokens (YES/NO shares). Required to SELL positions or have your SELL orders filled."
-                />
-                <ApprovalItem
-                  label="CTF → Neg Risk Exchange"
-                  approved={approvalStatus.ctfApprovedNegRiskExchange}
-                  tooltip="Allows the Negative Risk Exchange to transfer your outcome tokens. Required for selling positions on multi-outcome markets."
-                />
-                <ApprovalItem
-                  label="CTF → Neg Risk Adapter"
-                  approved={approvalStatus.ctfApprovedNegRiskAdapter}
-                  tooltip="Allows the Neg Risk Adapter to manage your positions. Required for splitting/merging outcome tokens and proper position management on multi-outcome markets."
-                />
-
-                {approvalStatus.isFullyApproved ? (
-                  <div className="mt-4 p-4 bg-green-500/10 rounded-lg border border-green-500/30">
-                    <div className="flex items-center gap-2 text-green-400">
-                      <CheckCircle className="w-5 h-5" />
-                      <span className="font-medium">Ready to Trade!</span>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-red-400 mb-1">Setup Failed</h3>
+                  <p className="text-sm text-red-300 whitespace-pre-line">{error}</p>
+                  {error.includes("relayer") && (
+                    <div className="mt-3 p-3 bg-red-500/5 rounded border border-red-500/20">
+                      <p className="text-xs text-red-200 font-semibold mb-2">💡 Troubleshooting:</p>
+                      <ul className="text-xs text-red-200 space-y-1 list-disc list-inside">
+                        <li>Check your internet connection</li>
+                        <li>Disable VPN if active</li>
+                        <li>Verify Builder credentials are set in .env.local</li>
+                        <li>Try refreshing the page</li>
+                      </ul>
                     </div>
-                    <p className="text-sm text-green-400/70 mt-1">
-                      All approvals are set. You can now place orders on Polymarket.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="mt-4 p-4 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
-                    <div className="flex items-center gap-2 text-yellow-400">
-                      <AlertCircle className="w-5 h-5" />
-                      <span className="font-medium">Approvals Required</span>
-                    </div>
-                    <p className="text-sm text-yellow-400/70 mt-1">
-                      {pendingTxs.length} approval(s) needed to enable trading.
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-gray-500 text-center py-4">Failed to load status</p>
-            )}
-          </div>
-
-          {/* Pending Approvals */}
-          {pendingTxs.length > 0 && (
-            <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
-              <div className="flex items-center gap-2 mb-4">
-                <Zap className="w-5 h-5 text-purple-400" />
-                <h2 className="text-lg font-semibold text-white">Pending Approvals</h2>
-              </div>
-
-              <div className="space-y-3 mb-4">
-                {pendingTxs.map((tx, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-gray-800 rounded-lg"
-                  >
-                    <div>
-                      <p className="text-white font-medium">{tx.description}</p>
-                      <p className="text-xs text-gray-500 font-mono">{tx.to.slice(0, 10)}...</p>
-                    </div>
-                    <button
-                      onClick={() => executeApproval(tx, index)}
-                      disabled={txStatus === "pending"}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {currentTxIndex === index && txStatus === "pending" ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        "Approve"
-                      )}
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {pendingTxs.length > 1 && (
-                <button
-                  onClick={executeAllApprovals}
-                  disabled={txStatus === "pending"}
-                  className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  {txStatus === "pending" ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Processing...
-                    </span>
-                  ) : (
-                    `Approve All (${pendingTxs.length} transactions)`
                   )}
-                </button>
-              )}
-
-              {txError && (
-                <div className="mt-4 p-3 bg-red-500/10 rounded-lg border border-red-500/30">
-                  <p className="text-sm text-red-400">{txError}</p>
                 </div>
-              )}
+              </div>
             </div>
           )}
 
-          {/* Contract Info */}
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-            <h2 className="text-lg font-semibold text-white mb-4">Contract Addresses</h2>
-            <div className="space-y-2 text-sm">
-              <ContractLink label="USDC.e" address={POLYGON_CONTRACTS.USDC} />
-              <ContractLink label="CTF Exchange" address={POLYGON_CONTRACTS.CTF_EXCHANGE} />
-              <ContractLink label="Neg Risk Exchange" address={POLYGON_CONTRACTS.NEG_RISK_CTF_EXCHANGE} />
-              <ContractLink label="CTF" address={POLYGON_CONTRACTS.CTF} />
+          {/* Steps */}
+          <div className="space-y-6">
+            {/* Info: Safe wallet auto-deployment */}
+            <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+              <p className="text-sm text-blue-400">
+                <strong>ℹ️ About Safe Wallet:</strong> When you create credentials, a Safe (Gnosis Safe) wallet will be automatically deployed if you don't have one yet. This is your trading wallet that holds USDC and manages positions.
+              </p>
+              {safeAddress && (
+                <p className="text-xs text-blue-300 mt-2 font-mono break-all">
+                  Your Safe: {safeAddress}
+                </p>
+              )}
             </div>
+
+            {/* Loading Status */}
+            {isLoading && (sessionStep === "checking" || sessionStep === "deploying" || sessionStep === "credentials" || sessionStep === "approvals") && (
+              <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />
+                  <div>
+                    <p className="text-sm font-medium text-purple-400">
+                      {sessionStep === "checking" && "🔍 Checking setup status..."}
+                      {sessionStep === "deploying" && "🚀 Deploying Safe wallet..."}
+                      {sessionStep === "credentials" && "🔑 Creating API credentials..."}
+                      {sessionStep === "approvals" && "✅ Setting token approvals..."}
+                    </p>
+                    <p className="text-xs text-purple-300 mt-1">This may take a few moments</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Single Step: Complete Trading Setup */}
+            <StepCard
+              icon={<Key className="w-6 h-6" />}
+              title="Complete Trading Setup"
+              description="Deploy Safe wallet, set token approvals, and generate API credentials"
+              status={
+                isSetupComplete
+                  ? "complete"
+                  : currentStep === "setup"
+                  ? "active"
+                  : "pending"
+              }
+              isLoading={isLoading}
+              onAction={handleStartSetup}
+              actionLabel={isSetupComplete ? "Setup Complete ✓" : "Start Setup"}
+              disabled={isSetupComplete}
+            />
+
+            {/* Complete */}
+            {currentStep === "complete" && (
+              <div className="p-6 bg-green-500/10 border border-green-500 rounded-lg">
+                <div className="flex items-center gap-4">
+                  <CheckCircle className="w-8 h-8 text-green-400" />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-white">Setup Complete!</h3>
+                    <p className="text-gray-300">You're ready to start trading</p>
+                  </div>
+                  <button
+                    onClick={handleComplete}
+                    className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                  >
+                    Go to Markets
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
@@ -381,60 +215,73 @@ export default function TradingSetupPage() {
   );
 }
 
-// Helper components
-function ApprovalItem({ label, approved, tooltip }: { label: string; approved: boolean; tooltip?: string }) {
-  const [showTooltip, setShowTooltip] = useState(false);
-
-  return (
-    <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-      <div className="flex items-center gap-2">
-        <span className="text-gray-300">{label}</span>
-        {tooltip && (
-          <div className="relative">
-            <button
-              onMouseEnter={() => setShowTooltip(true)}
-              onMouseLeave={() => setShowTooltip(false)}
-              onClick={() => setShowTooltip(!showTooltip)}
-              className="text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              <HelpCircle className="w-4 h-4" />
-            </button>
-            {showTooltip && (
-              <div className="absolute z-50 left-0 bottom-full mb-2 w-72 p-3 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
-                <p className="text-sm text-gray-300 leading-relaxed">{tooltip}</p>
-                <div className="absolute left-3 -bottom-1.5 w-3 h-3 bg-gray-900 border-r border-b border-gray-700 rotate-45"></div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        <span className={`text-sm ${approved ? "text-green-400" : "text-gray-500"}`}>
-          {approved ? "Approved" : "Not approved"}
-        </span>
-        {approved ? (
-          <CheckCircle className="w-4 h-4 text-green-400" />
-        ) : (
-          <AlertCircle className="w-4 h-4 text-gray-500" />
-        )}
-      </div>
-    </div>
-  );
+// Step Card Component
+interface StepCardProps {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  status: "pending" | "active" | "complete";
+  isLoading?: boolean;
+  onAction?: () => void;
+  actionLabel?: string;
+  disabled?: boolean;
 }
 
-function ContractLink({ label, address }: { label: string; address: string }) {
+function StepCard({
+  icon,
+  title,
+  description,
+  status,
+  isLoading,
+  onAction,
+  actionLabel,
+  disabled,
+}: StepCardProps) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-gray-400">{label}</span>
-      <a
-        href={`https://polygonscan.com/address/${address}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="font-mono text-blue-400 hover:text-blue-300 text-xs"
-      >
-        {address.slice(0, 6)}...{address.slice(-4)}
-        <ExternalLink className="w-3 h-3 inline ml-1" />
-      </a>
+    <div
+      className={`p-6 rounded-lg border transition-all ${
+        status === "active"
+          ? "bg-purple-500/10 border-purple-500"
+          : status === "complete"
+          ? "bg-green-500/10 border-green-500"
+          : "bg-gray-800/50 border-gray-700"
+      }`}
+    >
+      <div className="flex items-center gap-4">
+        <div
+          className={`p-3 rounded-lg ${
+            status === "active"
+              ? "bg-purple-500/20 text-purple-400"
+              : status === "complete"
+              ? "bg-green-500/20 text-green-400"
+              : "bg-gray-700/50 text-gray-400"
+          }`}
+        >
+          {status === "complete" ? <CheckCircle className="w-6 h-6" /> : icon}
+        </div>
+
+        <div className="flex-1">
+          <h3 className="text-lg font-semibold text-white">{title}</h3>
+          <p className="text-gray-400 text-sm">{description}</p>
+        </div>
+
+        {status === "active" && onAction && (
+          <button
+            onClick={onAction}
+            disabled={disabled || isLoading}
+            className="px-6 py-3 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              actionLabel
+            )}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -24,23 +24,23 @@ export const POLYGON_RPC_URLS = {
 export const POLYGON_CONTRACTS = {
   // USDC Tokens
   /** USDC.e (Bridged via PoS) - Used by Polymarket for trading */
-  USDC: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+  USDC: "0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
   /** Native USDC (Circle issued) - Required for CCTP bridging */
-  USDC_NATIVE: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+  USDC_NATIVE: "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
 
   // Polymarket Contracts
   /** Conditional Token Framework */
   CTF: "0x4d97dcd97ec945f40cf65f87097ace5ea0476045",
   /** CTF Exchange for regular markets */
-  CTF_EXCHANGE: "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E",
+  CTF_EXCHANGE: "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
   /** Neg Risk CTF Exchange for binary markets */
-  NEG_RISK_CTF_EXCHANGE: "0xC5d563A36AE78145C45a50134d48A1215220f80a",
+  NEG_RISK_CTF_EXCHANGE: "0xc5d563a36ae78145c45a50134d48a1215220f80a",
   /** Neg Risk Adapter */
-  NEG_RISK_ADAPTER: "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296",
+  NEG_RISK_ADAPTER: "0xd91e80cf2e7be2e162c6513ced06f1dd0da35296",
   
   // Proxy Wallet Factory
   /** Safe Proxy Factory - Used to derive Proxy Wallet addresses */
-  SAFE_PROXY_FACTORY: "0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b",
+  SAFE_PROXY_FACTORY: "0xaacfeea03eb1561c4e67d661e40682bd20e3541b",
 } as const;
 
 // ============= Proxy Wallet Constants =============
@@ -129,6 +129,102 @@ export const POLYMARKET_THEME = {
     },
   },
 } as const;
+
+// ============= Helper Functions =============
+
+/**
+ * Get API URL by type with environment override support
+ */
+export function getApiUrl(api: keyof typeof POLYMARKET_API): string {
+  return POLYMARKET_API[api];
+}
+
+/**
+ * Check if Builder credentials are configured (server-side only)
+ * For bethub, this checks if /api/builder/sign is available
+ */
+export function hasBuilderCredentials(): boolean {
+  // In bethub, Builder credentials are kept server-side
+  // Check if signing endpoint exists by checking if env vars are set
+  if (typeof window !== 'undefined') {
+    // Client-side: Assume builder endpoint exists if we have the app running
+    return true;
+  }
+  
+  // Server-side: Check if credentials exist
+  return !!(
+    process.env.POLY_BUILDER_API_KEY &&
+    process.env.POLY_BUILDER_SECRET &&
+    process.env.POLY_BUILDER_PASSPHRASE
+  );
+}
+
+/**
+ * Validate Builder credentials format (server-side only)
+ */
+export function validateBuilderCredentials(): { valid: boolean; errors: string[] } {
+  if (typeof window !== 'undefined') {
+    return { valid: true, errors: [] };
+  }
+  
+  const errors: string[] = [];
+  const apiKey = process.env.POLY_BUILDER_API_KEY;
+  const secret = process.env.POLY_BUILDER_SECRET;
+  const passphrase = process.env.POLY_BUILDER_PASSPHRASE;
+  
+  if (!apiKey) errors.push('POLY_BUILDER_API_KEY is not set');
+  if (!secret) errors.push('POLY_BUILDER_SECRET is not set');
+  if (!passphrase) errors.push('POLY_BUILDER_PASSPHRASE is not set');
+  
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Check if remote signing server is configured
+ */
+export function hasRemoteSigningConfig(): boolean {
+  // For bethub, we always use /api/builder/sign endpoint
+  // Check if it's explicitly configured or use default
+  if (typeof window !== 'undefined') {
+    return true; // Always true on client
+  }
+  
+  // Check server-side env or assume /api/builder/sign exists
+  return !!(
+    process.env.NEXT_PUBLIC_POLY_SIGNING_SERVER_URL ||
+    hasBuilderCredentials()
+  );
+}
+
+/**
+ * Get the builder signing endpoint URL
+ */
+export function getBuilderSigningUrl(): string {
+  // Check for explicit override
+  const envUrl = typeof window !== 'undefined'
+    ? process.env.NEXT_PUBLIC_POLY_SIGNING_SERVER_URL
+    : process.env.NEXT_PUBLIC_POLY_SIGNING_SERVER_URL;
+  
+  if (envUrl) return envUrl;
+  
+  // Default to /api/builder/sign on current origin
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/api/builder/sign`;
+  }
+  
+  // Server-side default
+  return 'http://localhost:3000/api/builder/sign';
+}
+
+/**
+ * Get polygon RPC URL with fallback
+ */
+export function getPolygonRpcUrl(): string {
+  return POLYGON_RPC_URLS.PRIMARY;
+}
 
 // ============= Type Exports =============
 
