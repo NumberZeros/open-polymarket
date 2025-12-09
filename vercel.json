@@ -1,43 +1,8 @@
 {
-  "projectSettings": {
-    "sourceFilesOutsideRootDirectory": false
-  },
   "buildCommand": "pnpm build",
   "devCommand": "pnpm dev",
   "installCommand": "pnpm install",
   "framework": "nextjs",
-  "env": [
-    {
-      "key": "NEXT_PUBLIC_POLYGON_RPC_URL",
-      "value": "https://polygon-rpc.com",
-      "type": "plaintext",
-      "documentation": "Polygon RPC URL for blockchain interactions"
-    },
-    {
-      "key": "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID",
-      "value": "",
-      "type": "plaintext",
-      "documentation": "WalletConnect Project ID - get from https://cloud.walletconnect.com"
-    },
-    {
-      "key": "NEXT_PUBLIC_POLYMARKET_API_BASE",
-      "value": "https://gamma-api.polymarket.com",
-      "type": "plaintext",
-      "documentation": "Polymarket Gamma API base URL"
-    },
-    {
-      "key": "NEXT_PUBLIC_CLOB_API_BASE",
-      "value": "https://clob.polymarket.com",
-      "type": "plaintext",
-      "documentation": "Polymarket CLOB API base URL"
-    },
-    {
-      "key": "NEXT_PUBLIC_POLYMARKET_DATA_API_BASE",
-      "value": "https://data-api.polymarket.com",
-      "type": "plaintext",
-      "documentation": "Polymarket Data API base URL"
-    }
-  ],
   "regions": ["iad1"],
   "functions": {
     "api/**": {
@@ -72,7 +37,5 @@
         }
       ]
     }
-  ],
-  "redirects": [],
-  "rewrites": []
+  ]
 }
