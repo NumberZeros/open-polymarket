@@ -16,31 +16,31 @@ import type { Market, OrderBook, TradeEstimate, OrderType } from "@/lib/polymark
 import { Loader2, AlertCircle, ArrowRight, TrendingUp, Target } from "lucide-react";
 
 // Temporary estimate functions until we migrate to SDK
-function estimateBuy(orderBook: OrderBook, amount: number): TradeEstimate {
+function estimateBuy(orderBook: OrderBook, usdcAmount: number): TradeEstimate {
   const bestAsk = orderBook.asks[0];
   const price = bestAsk ? parseFloat(bestAsk.price) : 0.5;
-  const cost = amount * price;
+  const shares = usdcAmount / price; // USDC amount / price = shares
   return {
-    cost,
-    shares: amount,
+    cost: usdcAmount,
+    shares: shares,
     avgPrice: price,
     slippage: 0,
-    potentialReturn: amount,
-    potentialProfit: amount - cost,
+    potentialReturn: shares,
+    potentialProfit: shares - usdcAmount,
   };
 }
 
-function estimateSell(orderBook: OrderBook, amount: number): TradeEstimate {
+function estimateSell(orderBook: OrderBook, shareAmount: number): TradeEstimate {
   const bestBid = orderBook.bids[0];
   const price = bestBid ? parseFloat(bestBid.price) : 0.5;
-  const cost = amount * price;
+  const proceeds = shareAmount * price; // shares * price = USDC received
   return {
-    cost,
-    shares: amount,
+    cost: shareAmount,
+    shares: shareAmount,
     avgPrice: price,
     slippage: 0,
-    potentialReturn: cost,
-    potentialProfit: cost - amount,
+    potentialReturn: proceeds,
+    potentialProfit: proceeds - shareAmount,
   };
 }
 
@@ -68,19 +68,79 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
   const [success, setSuccess] = useState<string | null>(null);
 
   // Get the token for the selected outcome
-  const selectedToken = market.tokens?.find?.((t) => 
-    t.outcome.toLowerCase() === selectedOutcome.toLowerCase()
-  ) || null;
+  // If market.tokens exists (from CLOB API), use it
+  // Otherwise, derive from clobTokenIds and outcomes
+  const selectedToken = (() => {
+    // Try to get from tokens array first (CLOB API)
+    if (market.tokens?.length) {
+      return market.tokens.find((t) => 
+        t.outcome?.toLowerCase() === selectedOutcome.toLowerCase()
+      ) || null;
+    }
+    
+    // Fallback: construct token object from clobTokenIds and outcomes
+    if (market.outcomes) {
+      try {
+        // Parse outcomes
+        const outcomes = typeof market.outcomes === 'string' 
+          ? JSON.parse(market.outcomes) 
+          : market.outcomes;
+        
+        // Parse clobTokenIds if it's a string
+        let tokenIds: string[] = [];
+        if (typeof market.clobTokenIds === 'string') {
+          tokenIds = JSON.parse(market.clobTokenIds);
+        } else if (Array.isArray(market.clobTokenIds)) {
+          tokenIds = market.clobTokenIds;
+        }
+        
+        if (Array.isArray(outcomes) && tokenIds.length > 0) {
+          const outcomeIndex = outcomes.findIndex(
+            (o: string) => o.toLowerCase() === selectedOutcome.toLowerCase()
+          );
+          
+          if (outcomeIndex >= 0 && tokenIds[outcomeIndex]) {
+            const tokenId = tokenIds[outcomeIndex];
+            // Clean token ID (remove quotes if present)
+            const cleanTokenId = tokenId.replace(/^["']|["']$/g, '').trim();
+            
+            if (cleanTokenId) {
+              return {
+                token_id: cleanTokenId,
+                outcome: selectedOutcome,
+                price: undefined,
+                winner: false,
+              };
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[OrderForm] Failed to parse token data:", err);
+      }
+    }
+    
+    return null;
+  })();
 
   // Auto-initialize trading session if wallet is connected and session exists but not initialized
   useEffect(() => {
-    if (isConnected && isWalletConnected && tradingSession && !isTradingSessionComplete && !clobClient) {
+    const shouldInitialize = isConnected && isWalletConnected && tradingSession && !isTradingSessionComplete && !clobClient;
+    
+    if (shouldInitialize) {
       // Session exists but relay client not initialized, restore it
+      let isMounted = true;
+      
       initializeTradingSession().catch((err) => {
-        console.error("[OrderForm] Failed to initialize trading session:", err);
+        if (isMounted) {
+          console.error("[OrderForm] Failed to initialize trading session:", err);
+        }
       });
+
+      return () => {
+        isMounted = false;
+      };
     }
-  }, [isConnected, isWalletConnected, tradingSession, isTradingSessionComplete, clobClient, initializeTradingSession]);
+  }, [isConnected, isWalletConnected, tradingSession, isTradingSessionComplete, clobClient]);
 
   // Load order book
   useEffect(() => {
@@ -142,7 +202,9 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
       return;
     }
 
-    if (!market.accepting_orders) {
+    // Support both camelCase (Gamma API) and snake_case (CLOB API)
+    const acceptingOrders = market.acceptingOrders ?? market.accepting_orders;
+    if (!acceptingOrders) {
       setError("This market is not currently accepting orders");
       return;
     }
@@ -157,6 +219,16 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
     const minSize = parseFloat(market.minimum_order_size || "1");
     if (parseFloat(amount) < minSize) {
       setError(`Minimum order size is ${minSize} USDC`);
+      return;
+    }
+
+    // Validate CLOB minimum shares (5 shares minimum)
+    let currentPrice = marketPrice?.midPrice || 0.5;
+    const shareSize = side === "BUY" 
+      ? parseFloat(amount) / (orderType === "LIMIT" ? parseFloat(limitPrice) : currentPrice)
+      : parseFloat(amount);
+    if (shareSize < 5) {
+      setError("Minimum order size is 5 shares");
       return;
     }
 
@@ -190,11 +262,18 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
         ? parseFloat(limitPrice)
         : estimate!.avgPrice;
 
+      // Calculate the size in shares
+      // For BUY: amount is in USDC, so size = amount / price
+      // For SELL: amount is in shares, so size = amount
+      const size = side === "BUY" 
+        ? parseFloat(amount) / orderPrice
+        : parseFloat(amount);
+
       // Create order using CLOB client directly
       const order = await clobClient.createOrder({
         tokenID: selectedToken.token_id,
         price: orderPrice,
-        size: parseFloat(amount),
+        size: size,
         side: side as any, // BUY or SELL string matches Side enum
         feeRateBps: 0,
       });
