@@ -144,7 +144,7 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
 
   // Load order book
   useEffect(() => {
-    if (!selectedToken) return;
+    if (!selectedToken?.token_id) return;
 
     const loadOrderBook = async () => {
       try {
@@ -159,7 +159,7 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
     const interval = setInterval(loadOrderBook, 5000); // Refresh every 5s
 
     return () => clearInterval(interval);
-  }, [selectedToken]);
+  }, [selectedToken?.token_id]);
 
   // Calculate estimate when amount changes (for market orders)
   useEffect(() => {
