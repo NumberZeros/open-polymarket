@@ -8,7 +8,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Users, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
+import { Users, Loader2 } from "lucide-react";
 
 interface Holder {
   address: string;
@@ -48,7 +48,7 @@ export function TopHolders({ tokenId, outcome }: TopHoldersProps) {
 
         const data = await response.json();
         setHolders(data.holders || []);
-      } catch (err) {
+      } catch {
         // Silently fail - this feature is optional
         console.warn("[TopHolders] Feature not available");
         setError(null);

@@ -29,8 +29,6 @@ export function Header() {
   
   // Fetch Safe balance using custom hook
   const { balance: safeBalance } = useSafeBalance(safeAddress);
-  
-  const canTrade = isConnected && isWalletConnected && isTradingSessionComplete && !!clobClient;
 
   // Handle client-side mounting
   useEffect(() => {

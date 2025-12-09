@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import type { Order, Trade, Position } from "@/lib/polymarket/types";
-import { Loader2, X, TrendingUp, TrendingDown, Clock, CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, AlertCircle, Trash2 } from "lucide-react";
 
 type TabType = "positions" | "orders" | "history";
 
@@ -212,11 +212,7 @@ export function PositionsPanel({ marketId }: PositionsPanelProps = {}) {
           setPositions([]);
         }
 
-        console.log("[PositionsPanel] Successfully loaded:", {
-          orders: orders.length,
-          history: history.length,
-          positions: positions.length
-        });
+        console.log("[PositionsPanel] Data fetch complete");
       } catch (err) {
         console.error("[PositionsPanel] Error loading data:", err);
         setError("Failed to load trading data");
@@ -232,9 +228,9 @@ export function PositionsPanel({ marketId }: PositionsPanelProps = {}) {
     const interval = setInterval(fetchData, 30000); // Refresh every 30s
 
     return () => clearInterval(interval);
-  }, [isServiceInitialized, clobClient, safeAddress, marketId]);
+  }, [isServiceInitialized, clobClient, safeAddress, marketId, isConnected, isTradingSessionComplete]);
 
-  const handleCancelOrder = async (orderId: string) => {
+  const handleCancelOrder = async (_orderId: string) => {
     if (!isServiceInitialized || !clobClient) {
       setError("Trading service not initialized");
       return;

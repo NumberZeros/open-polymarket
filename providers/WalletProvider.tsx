@@ -9,7 +9,7 @@ import {
 } from "wagmi";
 import { providers } from "ethers";
 import { createPublicClient, http } from "viem";
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { WalletContext, WalletContextType } from "./WalletContext";
 import { polygon } from "viem/chains";
 
@@ -45,7 +45,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [wagmiWalletClient]);
 
-  const connect = async () => {
+  const connect = useCallback(async () => {
     try {
       // Find injected connector (MetaMask)
       const injectedConnector = connectors.find((c) => c.id === "injected");
@@ -55,16 +55,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Connect error:", error);
     }
-  };
+  }, [connectors, connectAsync]);
 
-  const disconnect = async () => {
+  const disconnect = useCallback(async () => {
     try {
       await disconnectAsync();
       setEthersSigner(null);
     } catch (error) {
       console.error("Disconnect error:", error);
     }
-  };
+  }, [disconnectAsync]);
 
   const value = useMemo<WalletContextType>(
     () => ({
@@ -76,7 +76,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       disconnect,
       isConnected: wagmiConnected,
     }),
-    [eoaAddress, wagmiWalletClient, ethersSigner, wagmiConnected]
+    [eoaAddress, wagmiWalletClient, ethersSigner, wagmiConnected, connect, disconnect]
   );
 
   return (

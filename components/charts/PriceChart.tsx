@@ -23,7 +23,7 @@ import {
 } from "lightweight-charts";
 import { getPriceHistory } from "@/lib/polymarket/marketApi";
 import { useLivePrice } from "@/stores/websocketStore";
-import { Loader2, TrendingUp, TrendingDown, BarChart3, Wifi, WifiOff } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, BarChart3, Wifi } from "lucide-react";
 
 // ============= Types =============
 

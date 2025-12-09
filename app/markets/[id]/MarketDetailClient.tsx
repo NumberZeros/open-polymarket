@@ -260,7 +260,6 @@ export function MarketDetailClient({ market }: MarketDetailClientProps) {
             {activeTab === "trades" && (
               <TradeHistory 
                 marketId={market.conditionId || market.condition_id || ''}
-                tokenId={selectedToken?.token_id}
                 limit={20}
               />
             )}

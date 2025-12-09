@@ -22,7 +22,6 @@ import {
   withdrawFromProxyWallet,
   type WithdrawPreview,
 } from "@/lib/polymarket/proxyWallet";
-import { POLYGON_CONTRACTS } from "@/lib/polymarket/config";
 import {
   Wallet,
   ArrowLeft,

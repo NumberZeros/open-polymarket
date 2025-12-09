@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { notFound } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { MarketDetailClient } from "./MarketDetailClient";
 import { getMarketBySlug, getMarket } from "@/lib/polymarket/marketApi";
@@ -15,13 +14,11 @@ export default function MarketPage({ params }: MarketPageProps) {
   const [market, setMarket] = useState<Market | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [id, setId] = useState<string>("");
 
   useEffect(() => {
     const fetchMarket = async () => {
       try {
         const { id: slugId } = await params;
-        setId(slugId);
         
         // Detect if it's a condition_id (hash starting with 0x) or a slug
         const isConditionId = slugId.startsWith("0x") && slugId.length === 66; // 0x + 64 hex chars

@@ -44,7 +44,6 @@
  * - Use CLOB API only for real-time trading data
  */
 
-import { POLYMARKET_API } from "./config";
 import type { Market, Event, OrderBook, Trade, PaginatedResponse } from "./types";
 
 /**

@@ -7,15 +7,12 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { useAccount, usePublicClient, useWalletClient, useSignTypedData } from "wagmi";
-import { formatUsdc } from "@/lib/polymarket/marketApi";
 import { createEthersWallet } from "@/lib/polymarket/ethersWallet";
 
-import { POLYGON_CONTRACTS } from "@/lib/polymarket/config";
 import { deploySafe } from "@/lib/polymarket/relayerApi";
 import {
   deriveProxyWalletAddress,
@@ -31,8 +28,6 @@ import {
   Loader2,
   Copy,
   ExternalLink,
-  ArrowDownCircle,
-  ArrowUpCircle,
   Key,
   RefreshCw,
 } from "lucide-react";

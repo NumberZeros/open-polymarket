@@ -122,7 +122,7 @@ export class PolymarketWebSocket {
           resolve();
         };
 
-        this.ws.onclose = (event) => {
+        this.ws.onclose = () => {
           console.debug("[WS] Connection closed");
           this.stopPing();
           this.disconnectHandlers.forEach(handler => handler());

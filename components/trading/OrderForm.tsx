@@ -12,7 +12,7 @@ import { useAccount } from "wagmi";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { getOrderBook, calculateMarketPrice } from "@/lib/polymarket/marketApi";
-import type { Market, OrderBook, TradeEstimate, OrderType } from "@/lib/polymarket/types";
+import type { Market, OrderBook, TradeEstimate } from "@/lib/polymarket/types";
 import { Loader2, AlertCircle, ArrowRight, TrendingUp, Target } from "lucide-react";
 
 // Temporary estimate functions until we migrate to SDK
@@ -140,7 +140,7 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
         isMounted = false;
       };
     }
-  }, [isConnected, isWalletConnected, tradingSession, isTradingSessionComplete, clobClient]);
+  }, [isConnected, isWalletConnected, tradingSession, isTradingSessionComplete, clobClient, initializeTradingSession]);
 
   // Load order book
   useEffect(() => {
@@ -223,7 +223,7 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
     }
 
     // Validate CLOB minimum shares (5 shares minimum)
-    let currentPrice = marketPrice?.midPrice || 0.5;
+    const currentPrice = marketPrice?.midPrice || 0.5;
     const shareSize = side === "BUY" 
       ? parseFloat(amount) / (orderType === "LIMIT" ? parseFloat(limitPrice) : currentPrice)
       : parseFloat(amount);
@@ -530,7 +530,7 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
             Connect your wallet to start trading
           </p>
           <p className="text-xs text-[#71717a]">
-            Click "Connect Wallet" in the header
+            Click &quot;Connect Wallet&quot; in the header
           </p>
         </div>
       )}

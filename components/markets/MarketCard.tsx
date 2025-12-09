@@ -7,6 +7,7 @@
  */
 
 import Link from "next/link";
+import Image from "next/image";
 import type { Market } from "@/lib/polymarket/types";
 import { parseOutcomePrices, formatPercent } from "@/lib/polymarket/marketApi";
 import { Clock, Users } from "lucide-react";
@@ -48,10 +49,12 @@ export function MarketCard({ market }: MarketCardProps) {
       {/* Image */}
       {market.image && (
         <div className="relative h-32 overflow-hidden">
-          <img
+          <Image
             src={market.image}
             alt={market.question}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            className="object-cover group-hover:scale-105 transition-transform duration-300"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#16161a] to-transparent" />
         </div>

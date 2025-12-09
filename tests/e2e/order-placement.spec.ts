@@ -9,7 +9,7 @@ test.describe('Polymarket Order Placement', () => {
     await page.waitForLoadState('networkidle');
   });
 
-  test('should place an order successfully', async ({ page, context }) => {
+  test('should place an order successfully', async ({ page }) => {
     // Intercept network requests to see what's being sent
     let orderRequestData: any = null;
     

@@ -6,7 +6,7 @@
  * Shows user's positions, open orders, and trade history
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Header } from "@/components/layout/Header";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
@@ -41,7 +41,7 @@ export default function PortfolioPage() {
   const canTrade = hasWallet && isTradingSessionComplete && !!clobClient;
 
   // Fetch portfolio data
-  const refreshBalances = async () => {
+  const refreshBalances = useCallback(async () => {
     console.log('[Portfolio] refreshBalances called with:', {
       canTrade,
       hasWallet,
@@ -157,11 +157,7 @@ export default function PortfolioPage() {
         setProxyWalletBalance(0);
       }
 
-      console.log('[Portfolio] Successfully loaded:', {
-        orders: transformedOrders.length,
-        positions: positions.length,
-        balance: proxyWalletBalance
-      });
+      console.log('[Portfolio] Successfully loaded data for orders:', transformedOrders.length);
     } catch (err) {
       console.error('[Portfolio] Failed to refresh balances:', err);
       setError('Failed to load portfolio data');
@@ -171,7 +167,7 @@ export default function PortfolioPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [canTrade, clobClient, safeAddress, hasWallet, isConnected, isWalletConnected, isTradingSessionComplete]);
 
   // Mount effect
   useEffect(() => {
@@ -190,9 +186,9 @@ export default function PortfolioPage() {
     }
     console.log('[Portfolio] Calling refreshBalances...');
     refreshBalances();
-  }, [isMounted, canTrade, safeAddress]);
+  }, [isMounted, canTrade, safeAddress, refreshBalances]);
 
-  const cancelUserOrder = async (orderId: string) => {
+  const cancelUserOrder = async (_orderId: string) => {
     if (!clobClient) return;
     
     try {

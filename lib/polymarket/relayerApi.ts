@@ -9,7 +9,7 @@
 
 import { RelayClient } from "@polymarket/builder-relayer-client";
 import type { JsonRpcSigner } from "@ethersproject/providers";
-import { POLYMARKET_API, POLYGON_CONTRACTS } from "./config";
+import { POLYGON_CONTRACTS } from "./config";
 
 // ============= Types =============
 
@@ -31,15 +31,6 @@ export interface TransactionResult {
 
 export interface SafeDeploymentResult extends TransactionResult {
   safeAddress?: string;
-}
-
-// ============= Safe Transaction Types =============
-
-interface SafeTransaction {
-  to: string;
-  data: string;
-  value: string;
-  operation: number; // 0 = Call, 1 = DelegateCall
 }
 
 // ============= Relayer API =============

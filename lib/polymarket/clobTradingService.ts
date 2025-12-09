@@ -16,7 +16,6 @@
 
 import { ClobClient, Side, OrderType, AssetType } from '@polymarket/clob-client';
 import { SignatureType } from '@polymarket/order-utils';
-import { ethers } from 'ethers';
 import type { Wallet, Signer } from 'ethers';
 import { getBuilderConfigManager } from './builderConfig';
 import { POLYMARKET_API, POLYGON_CHAIN_ID } from './config';
@@ -158,7 +157,7 @@ export class ClobTradingService {
         try {
             console.log('[ClobTradingService] Trying deriveApiKey...');
             return await client.deriveApiKey();
-        } catch (error) {
+        } catch {
             try {
                 console.log('[ClobTradingService] deriveApiKey failed, trying createApiKey...');
                 return await client.createApiKey();
@@ -1026,6 +1025,3 @@ export function getClobTradingService(): ClobTradingService {
 }
 
 export default ClobTradingService;
-
-// Import POLYGON_CONTRACTS for balance queries
-import { POLYGON_CONTRACTS } from './config';

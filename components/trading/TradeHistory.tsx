@@ -10,15 +10,15 @@ import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getMarketTrades } from "@/lib/polymarket/marketApi";
 import { useLiveTrades } from "@/stores/websocketStore";
-import type { TradeUpdate } from "@/lib/polymarket/websocket";
 import { Loader2, ArrowUpRight, ArrowDownRight, History, Zap } from "lucide-react";
 import type { Trade } from "@/lib/polymarket/types";
+import type { TradeUpdate } from "@/lib/polymarket/websocket";
 
 // ============= Types =============
 
 interface TradeHistoryProps {
   marketId: string;
-  tokenId?: string;
+  _tokenId?: string;
   limit?: number;
   showLive?: boolean;
 }
@@ -36,7 +36,7 @@ interface DisplayTrade {
 
 export function TradeHistory({
   marketId,
-  tokenId,
+  _tokenId,
   limit = 20,
   showLive = true,
 }: TradeHistoryProps) {
@@ -148,7 +148,7 @@ export function TradeHistory({
         {!isLoading && !error && allTrades.length > 0 && (
           <div className="divide-y divide-[#27272a]">
             <AnimatePresence>
-              {allTrades.map((trade, index) => (
+              {allTrades.map((trade) => (
                 <motion.div
                   key={trade.id}
                   initial={trade.isLive ? { backgroundColor: "rgba(139, 92, 246, 0.2)" } : false}

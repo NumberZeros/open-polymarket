@@ -11,7 +11,6 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import { getOrderBook } from "@/lib/polymarket/marketApi";
 import { useLiveOrderBook } from "@/stores/websocketStore";
-import type { BookUpdate } from "@/lib/polymarket/websocket";
 import { Loader2, BookOpen, TrendingUp, TrendingDown, Zap } from "lucide-react";
 import type { OrderBook as OrderBookType, OrderBookLevel } from "@/lib/polymarket/types";
 

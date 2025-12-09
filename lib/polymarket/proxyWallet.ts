@@ -259,9 +259,7 @@ function buildTransferCalldata(to: string, amount: bigint): `0x${string}` {
  */
 export async function withdrawFromProxyWallet(
   params: WithdrawParams,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   publicClient: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   walletClient: any
 ): Promise<WithdrawResult> {
   try {

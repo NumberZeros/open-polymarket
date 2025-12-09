@@ -31,12 +31,12 @@ export default function useUserApiCredentials() {
     try {
       credentials = await tempClient.deriveApiKey();
       console.log("✅ Derived existing API credentials");
-    } catch (deriveError) {
+    } catch {
       try {
         console.log("Derive failed, creating new API credentials...");
         credentials = await tempClient.createApiKey();
         console.log("✅ Created new API credentials");
-      } catch (createError) {
+      } catch {
         throw new Error("Failed to derive or create API credentials. Please ensure you have a Polymarket account.");
       }
     }

@@ -1,7 +1,26 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  /* Vercel deployment configuration */
+  reactStrictMode: true,
+  
+  /* Performance optimization */
+  compress: true,
+  
+  /* Image optimization for Vercel */
+  images: {
+    formats: ["image/avif", "image/webp"],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**.polymarket.com",
+      },
+    ],
+  },
+  
+  /* Webpack configuration */
   webpack: (config) => {
     // Fix for WalletConnect pino-pretty warning
     config.resolve.fallback = {
@@ -11,6 +30,38 @@ const nextConfig: NextConfig = {
     // Ignore pino-pretty in externals
     config.externals.push("pino-pretty", "lokijs", "encoding");
     return config;
+  },
+
+  /* Headers for security and performance */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+          {
+            key: "X-Frame-Options",
+            value: "DENY",
+          },
+          {
+            key: "X-XSS-Protection",
+            value: "1; mode=block",
+          },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+        ],
+      },
+    ];
+  },
+
+  /* Redirects */
+  async redirects() {
+    return [];
   },
 };
 

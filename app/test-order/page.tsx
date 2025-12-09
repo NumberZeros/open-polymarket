@@ -14,8 +14,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { ClobClient, Side } from "@polymarket/clob-client";
-import { SignatureType } from "@polymarket/order-utils";
+import { Side } from "@polymarket/clob-client";
 import { useActiveMarkets } from "@/hooks/useActiveMarkets";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";

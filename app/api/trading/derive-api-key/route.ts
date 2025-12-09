@@ -11,7 +11,6 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { Wallet } from "ethers";
 
 const CLOB_API_URL = process.env.NEXT_PUBLIC_CLOB_API_URL || "https://clob.polymarket.com";
 
