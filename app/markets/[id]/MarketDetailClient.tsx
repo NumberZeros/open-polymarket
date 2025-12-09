@@ -272,7 +272,7 @@ export function MarketDetailClient({ market }: MarketDetailClientProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
           >
-            <PositionsPanel />
+            <PositionsPanel marketId={market.conditionId || market.condition_id} />
           </motion.div>
         </div>
 

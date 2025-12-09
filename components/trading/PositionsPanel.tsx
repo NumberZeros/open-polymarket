@@ -15,7 +15,16 @@ import { Loader2, X, TrendingUp, TrendingDown, Clock, CheckCircle2, AlertCircle,
 
 type TabType = "positions" | "orders" | "history";
 
-export function PositionsPanel() {
+interface PositionsPanelProps {
+  /**
+   * Optional market ID to filter positions/orders/history
+   * If provided, only shows data related to this market
+   * If not provided, shows all user positions/orders/history
+   */
+  marketId?: string;
+}
+
+export function PositionsPanel({ marketId }: PositionsPanelProps = {}) {
   const { isConnected } = useWallet();
   const { clobClient, isTradingSessionComplete, safeAddress } = useTrading();
   
@@ -88,7 +97,7 @@ export function PositionsPanel() {
         });
 
         // Transform orders
-        const transformedOrders: Order[] = (ordersData as any[]).map((order) => ({
+        let transformedOrders: Order[] = (ordersData as any[]).map((order) => ({
           id: order.id || order.order_id || String(Math.random()),
           owner: order.owner || "",
           market: order.market || order.asset_id || "",
@@ -102,11 +111,19 @@ export function PositionsPanel() {
           outcome: order.outcome,
           status: order.status
         }));
+        
+        // Filter by market if marketId provided
+        if (marketId) {
+          transformedOrders = transformedOrders.filter(
+            order => order.asset_id === marketId || order.market === marketId
+          );
+        }
+        
         console.log("[PositionsPanel] Transformed orders:", transformedOrders);
         setOrders(transformedOrders);
 
         // Transform trade history
-        const transformedHistory: Trade[] = (historyData as any[]).map((trade) => ({
+        let transformedHistory: Trade[] = (historyData as any[]).map((trade) => ({
           id: trade.id || trade.trade_id || String(Math.random()),
           taker_order_id: trade.taker_order_id || trade.id || "",
           market: trade.market || "",
@@ -123,6 +140,14 @@ export function PositionsPanel() {
           trader_side: trade.trader_side,
           transaction_hash: trade.transaction_hash
         }));
+        
+        // Filter by market if marketId provided
+        if (marketId) {
+          transformedHistory = transformedHistory.filter(
+            trade => trade.asset_id === marketId || trade.market === marketId
+          );
+        }
+        
         console.log("[PositionsPanel] Transformed history:", transformedHistory);
         setHistory(transformedHistory);
 
@@ -130,8 +155,12 @@ export function PositionsPanel() {
         if (safeAddress) {
           try {
             // Use correct query parameter 'user' and optional filters
-            const positionsUrl = `https://data-api.polymarket.com/positions?user=${safeAddress}&sizeThreshold=1&limit=100`;
-            console.log("[PositionsPanel] Fetching positions from:", positionsUrl);
+            const queryParams = new URLSearchParams();
+            queryParams.append('user', safeAddress);
+            queryParams.append('sizeThreshold', '1');
+            queryParams.append('limit', '100');
+            const positionsUrl = `https://data-api.polymarket.com/positions?${queryParams.toString()}`;
+            console.log("[PositionsPanel] Fetching positions from:", positionsUrl, { marketId });
             
             const positionsResponse = await fetch(positionsUrl);
             console.log("[PositionsPanel] Positions response status:", positionsResponse.status);
@@ -140,7 +169,7 @@ export function PositionsPanel() {
               const positionsData = await positionsResponse.json();
               console.log("[PositionsPanel] Raw positions received:", positionsData?.length || 0);
               // Map API response according to official documentation
-              const transformedPositions: Position[] = (positionsData as any[]).map((pos) => ({
+              let transformedPositions: Position[] = (positionsData as any[]).map((pos) => ({
                 asset: pos.asset || "",
                 condition_id: pos.conditionId || "",
                 market: pos.title || "", // Use title from API
@@ -152,6 +181,18 @@ export function PositionsPanel() {
                 realizedPnl: pos.realizedPnl || 0, // Realized PnL
                 unrealizedPnl: pos.cashPnl || 0 // Unrealized PnL (from cashPnl)
               }));
+              
+              // Filter by market if marketId provided
+              if (marketId) {
+                transformedPositions = transformedPositions.filter(
+                  pos => pos.condition_id === marketId || pos.asset === marketId
+                );
+                console.log("[PositionsPanel] Filtered positions by market:", {
+                  marketId,
+                  count: transformedPositions.length
+                });
+              }
+              
               console.log("[PositionsPanel] Transformed positions:", transformedPositions);
               setPositions(transformedPositions);
             } else {
@@ -191,7 +232,7 @@ export function PositionsPanel() {
     const interval = setInterval(fetchData, 30000); // Refresh every 30s
 
     return () => clearInterval(interval);
-  }, [isServiceInitialized, clobClient, safeAddress]);
+  }, [isServiceInitialized, clobClient, safeAddress, marketId]);
 
   const handleCancelOrder = async (orderId: string) => {
     if (!isServiceInitialized || !clobClient) {

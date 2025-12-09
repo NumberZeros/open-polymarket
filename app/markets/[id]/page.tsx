@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { notFound } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { MarketDetailClient } from "./MarketDetailClient";
-import { getMarketBySlug } from "@/lib/polymarket/marketApi";
+import { getMarketBySlug, getMarket } from "@/lib/polymarket/marketApi";
 import type { Market } from "@/lib/polymarket/types";
 
 interface MarketPageProps {
@@ -23,7 +23,19 @@ export default function MarketPage({ params }: MarketPageProps) {
         const { id: slugId } = await params;
         setId(slugId);
         
-        const marketData = await getMarketBySlug(slugId);
+        // Detect if it's a condition_id (hash starting with 0x) or a slug
+        const isConditionId = slugId.startsWith("0x") && slugId.length === 66; // 0x + 64 hex chars
+        
+        let marketData: Market | null = null;
+        
+        if (isConditionId) {
+          console.log("[MarketPage] Fetching by condition_id:", slugId);
+          marketData = await getMarket(slugId);
+        } else {
+          console.log("[MarketPage] Fetching by slug:", slugId);
+          marketData = await getMarketBySlug(slugId);
+        }
+        
         if (!marketData) {
           setError("Market not found");
           return;
