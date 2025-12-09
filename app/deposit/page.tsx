@@ -13,7 +13,8 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
-import { usePolymarketStore } from "@/stores/polymarketStore";
+import { useWallet } from "@/providers/WalletContext";
+import { useTrading } from "@/providers/TradingProvider";
 import { useAccount, usePublicClient } from "wagmi";
 import {
   getSupportedAssets,
@@ -45,9 +46,13 @@ import {
 } from "lucide-react";
 
 export default function DepositPage() {
+  // Prevent hydration mismatch
+  const [isMounted, setIsMounted] = useState(false);
+
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
-  const { refreshBalances } = usePolymarketStore();
+  const { isConnected: isWalletConnected } = useWallet();
+  const { clobClient } = useTrading();
 
   // State
   const [supportedAssets, setSupportedAssets] = useState<SupportedAsset[]>([]);
@@ -107,16 +112,32 @@ export default function DepositPage() {
   // Group assets by chain
   const assetsByChain = groupAssetsByChain(supportedAssets);
 
+  // Mount effect
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // Effects
   useEffect(() => {
+    if (!isMounted) return;
     fetchData();
-  }, [fetchData]);
+  }, [isMounted, fetchData]);
 
-  useEffect(() => {
-    if (!isConnected) return;
-    const interval = setInterval(refreshBalances, 30000);
-    return () => clearInterval(interval);
-  }, [isConnected, refreshBalances]);
+  // Balance refreshing is handled by providers
+
+  // Prevent hydration mismatch
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-gray-950">
+        <Header />
+        <main className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   // Not connected
   if (!isConnected) {

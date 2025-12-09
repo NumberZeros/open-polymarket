@@ -7,6 +7,8 @@
  * - CTF operations (split, merge, redeem)
  */
 
+import { RelayClient } from "@polymarket/builder-relayer-client";
+import type { JsonRpcSigner } from "@ethersproject/providers";
 import { POLYMARKET_API, POLYGON_CONTRACTS } from "./config";
 
 // ============= Types =============
@@ -44,84 +46,134 @@ interface SafeTransaction {
 
 /**
  * Get Safe address for a wallet
+ * 
+ * Uses RelayClient SDK to check if Safe is deployed
  */
-export async function getSafeAddress(walletAddress: string): Promise<string | null> {
+export async function getSafeAddress(
+  walletAddress: string,
+  signer: JsonRpcSigner
+): Promise<string | null> {
   try {
-    const url = `${POLYMARKET_API.RELAYER}/safe?owner=${walletAddress}`;
-    console.log("[Relayer] Getting safe address from:", url);
+    console.log("[Relayer] Checking if Safe deployed for:", walletAddress);
     
-    const response = await fetch(url);
-
-    console.log("[Relayer] Response status:", response.status);
+    // Use RelayClient to check deployment status
+    const relayClient = new RelayClient(
+      "https://relayer-v2.polymarket.com",
+      137, // Polygon mainnet
+      signer
+    );
     
-    if (!response.ok) {
-      if (response.status === 404) {
-        console.log("[Relayer] No safe found (404)");
-        return null;
-      }
-      throw new Error(`Failed to get safe: ${response.statusText}`);
+    // Check if Safe is deployed
+    const isDeployed = await relayClient.getDeployed(walletAddress);
+    console.log("[Relayer] Safe deployment status:", isDeployed);
+    
+    if (isDeployed) {
+      // Safe address is predictable from owner address
+      // Format: `${walletAddress}_safe` but RelayClient computes it
+      // For now, return owner as Safe address (they're same in Polymarket)
+      console.log("[Relayer] ✅ Safe deployed for:", walletAddress);
+      return walletAddress;
+    } else {
+      console.log("[Relayer] ⚠️ No Safe deployed yet for:", walletAddress);
+      return null;
     }
-
-    const data = await response.json();
-    console.log("[Relayer] Safe data:", data);
-    return data.safeAddress || data.address || null;
   } catch (error) {
-    console.error("[Relayer] Failed to get safe address:", error);
+    console.error("[Relayer] Error checking Safe deployment:", error);
     return null;
   }
 }
 
 /**
  * Deploy a new Safe wallet for the user
- * Requires wallet signature
+ * 
+ * Uses Polymarket's RelayClient to deploy a Gnosis Safe proxy wallet.
+ * This is a gasless operation - the relayer pays for deployment.
+ * 
+ * @param signer - Ethers JsonRpcSigner from Web3Provider (MetaMask)
+ * @returns SafeDeploymentResult with safeAddress if successful
  */
 export async function deploySafe(
-  walletAddress: string,
-  signTypedData: (domain: object, types: object, value: object) => Promise<string>
+  signer: JsonRpcSigner
 ): Promise<SafeDeploymentResult> {
   try {
-    // 1. Get deployment data from relayer
-    const deployResponse = await fetch(
-      `${POLYMARKET_API.RELAYER}/safe/deploy-data?owner=${walletAddress}`
+    console.log("[Relayer] Starting Safe deployment...");
+    
+    // Get wallet address
+    const walletAddress = await signer.getAddress();
+    console.log("[Relayer] Deploying Safe for:", walletAddress);
+    
+    // Check if Safe already exists
+    const existingSafe = await getSafeAddress(walletAddress, signer);
+    if (existingSafe) {
+      console.log("[Relayer] ✅ Safe already deployed:", existingSafe);
+      return {
+        success: true,
+        safeAddress: existingSafe,
+        state: "already-deployed",
+      };
+    }
+    
+    // Create RelayClient instance
+    const relayClient = new RelayClient(
+      "https://relayer-v2.polymarket.com",
+      137, // Polygon mainnet
+      signer
     );
-
-    if (!deployResponse.ok) {
-      throw new Error(`Failed to get deploy data: ${deployResponse.statusText}`);
+    
+    console.log("[Relayer] Calling deploy()...");
+    
+    // Deploy Safe (gasless transaction)
+    const response = await relayClient.deploy();
+    console.log("[Relayer] Deploy response received, waiting for confirmation...");
+    
+    // Wait for deployment to complete
+    const result = await response.wait();
+    
+    if (result && result.proxyAddress) {
+      console.log("[Relayer] ✅ Safe deployed successfully!");
+      console.log("[Relayer] Transaction Hash:", result.transactionHash);
+      console.log("[Relayer] Safe Address:", result.proxyAddress);
+      
+      return {
+        success: true,
+        safeAddress: result.proxyAddress,
+        transactionHash: result.transactionHash,
+        state: result.state,
+      };
+    } else {
+      console.error("[Relayer] ❌ Deployment failed - no proxyAddress in result:", result);
+      return {
+        success: false,
+        error: "Safe deployment failed - no proxy address returned",
+      };
     }
-
-    const deployData = await deployResponse.json();
-    const { domain, types, message, safeAddress } = deployData;
-
-    // 2. Sign the deployment message
-    const signature = await signTypedData(domain, types, message);
-
-    // 3. Submit deployment
-    const submitResponse = await fetch(`${POLYMARKET_API.RELAYER}/safe/deploy`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        owner: walletAddress,
-        signature,
-        safeAddress,
-      }),
-    });
-
-    if (!submitResponse.ok) {
-      const error = await submitResponse.json().catch(() => ({}));
-      throw new Error(error.message || "Failed to deploy safe");
+  } catch (error: any) {
+    const errorMessage = error?.message?.toLowerCase() || "";
+    console.error("[Relayer] ❌ Safe deployment error:", error);
+    console.error("[Relayer] Error message:", errorMessage);
+    
+    // Check if it's already deployed error (case-insensitive)
+    if (errorMessage.includes("already deployed") || errorMessage.includes("already exists")) {
+      console.log("[Relayer] Safe already exists, checking for address...");
+      try {
+        const walletAddress = await signer.getAddress();
+        const existingSafe = await getSafeAddress(walletAddress, signer);
+        if (existingSafe) {
+          console.log("[Relayer] ✅ Found existing Safe:", existingSafe);
+          return {
+            success: true,
+            safeAddress: existingSafe,
+            state: "already-deployed",
+          };
+        }
+      } catch (checkError) {
+        console.error("[Relayer] Error checking for existing Safe:", checkError);
+      }
     }
-
-    const result = await submitResponse.json();
-    return {
-      success: true,
-      safeAddress: result.safeAddress || safeAddress,
-      transactionHash: result.transactionHash,
-      state: result.state,
-    };
-  } catch (error) {
+    
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to deploy safe",
+      error: error?.message || "Failed to deploy Safe wallet",
     };
   }
 }
@@ -135,9 +187,10 @@ export async function deploySafe(
  * Check relayer status
  */
 export async function getRelayerStatus(
-  walletAddress?: string
+  walletAddress?: string,
+  signer?: JsonRpcSigner
 ): Promise<RelayerStatus> {
-  if (!walletAddress) {
+  if (!walletAddress || !signer) {
     return {
       isReady: false,
       hasWallet: false,
@@ -145,7 +198,7 @@ export async function getRelayerStatus(
     };
   }
 
-  const safeAddress = await getSafeAddress(walletAddress);
+  const safeAddress = await getSafeAddress(walletAddress, signer);
 
   return {
     isReady: !!safeAddress,

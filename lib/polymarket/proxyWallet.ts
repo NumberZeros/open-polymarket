@@ -121,10 +121,10 @@ export async function isProxyWalletDeployed(
 }
 
 /**
- * Get USDC.e balance of a Proxy Wallet
+ * Get USDC.e balance of any address (EOA or Proxy Wallet)
  */
-export async function getProxyWalletUsdcBalance(
-  proxyWalletAddress: string,
+export async function getUsdcBalance(
+  address: string,
   publicClient: {
     readContract: (args: {
       address: `0x${string}`;
@@ -139,12 +139,30 @@ export async function getProxyWalletUsdcBalance(
       address: POLYGON_CONTRACTS.USDC as `0x${string}`,
       abi: ERC20_ABI,
       functionName: "balanceOf",
-      args: [proxyWalletAddress as `0x${string}`],
+      args: [address as `0x${string}`],
     });
     return balance as bigint;
   } catch {
     return BigInt(0);
   }
+}
+
+/**
+ * Get USDC.e balance of a Proxy Wallet
+ * @deprecated Use getUsdcBalance instead
+ */
+export async function getProxyWalletUsdcBalance(
+  proxyWalletAddress: string,
+  publicClient: {
+    readContract: (args: {
+      address: `0x${string}`;
+      abi: readonly unknown[];
+      functionName: string;
+      args: readonly unknown[];
+    }) => Promise<unknown>;
+  }
+): Promise<bigint> {
+  return getUsdcBalance(proxyWalletAddress, publicClient);
 }
 
 // ============= Formatting & Validation =============

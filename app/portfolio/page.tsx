@@ -6,11 +6,13 @@
  * Shows user's positions, open orders, and trade history
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Header } from "@/components/layout/Header";
-import { usePolymarketStore } from "@/stores/polymarketStore";
+import { useWallet } from "@/providers/WalletContext";
+import { useTrading } from "@/providers/TradingProvider";
 import { useAccount } from "wagmi";
 import { formatUsdc } from "@/lib/polymarket/marketApi";
+import type { Order, Position } from "@/lib/polymarket/types";
 import { 
   Wallet, 
   TrendingUp, 
@@ -22,35 +24,201 @@ import {
 } from "lucide-react";
 
 export default function PortfolioPage() {
-  const { address, isConnected } = useAccount();
-  const {
-    isLoading,
-    error,
-    proxyWalletUsdcBalance,
-    positions,
-    openOrders,
-    setWallet,
-    refreshBalances,
-    cancelUserOrder,
-    getStatus,
-  } = usePolymarketStore();
+  // Prevent hydration mismatch
+  const [isMounted, setIsMounted] = useState(false);
 
-  const status = getStatus();
+  const { isConnected } = useAccount();
+  const { isConnected: isWalletConnected } = useWallet();
+  const { clobClient, isTradingSessionComplete, safeAddress } = useTrading();
+  
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [proxyWalletBalance, setProxyWalletBalance] = useState(0);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [openOrders, setOpenOrders] = useState<Order[]>([]);
 
-  // Sync wallet with store
-  useEffect(() => {
-    if (isConnected && address) {
-      setWallet(address);
-    } else {
-      setWallet(null);
+  const hasWallet = isConnected && isWalletConnected;
+  const canTrade = hasWallet && isTradingSessionComplete && !!clobClient;
+
+  // Fetch portfolio data
+  const refreshBalances = async () => {
+    console.log('[Portfolio] refreshBalances called with:', {
+      canTrade,
+      hasWallet,
+      isConnected,
+      isWalletConnected,
+      isTradingSessionComplete,
+      hasClobClient: !!clobClient,
+      safeAddress
+    });
+    
+    if (!canTrade || !clobClient) {
+      console.warn('[Portfolio] Cannot trade or no CLOB client:', { canTrade, hasClobClient: !!clobClient });
+      return;
     }
-  }, [isConnected, address, setWallet]);
+    
+    if (!safeAddress) {
+      console.warn('[Portfolio] No safe address available yet');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      console.log('[Portfolio] Starting data fetch, safeAddress:', safeAddress);
+      
+      // Fetch open orders directly from clobClient
+      let ordersData: any[] = [];
+      try {
+        ordersData = await clobClient.getOpenOrders() as any[];
+        console.log('[Portfolio] Raw orders received:', ordersData?.length || 0);
+      } catch (orderError) {
+        console.error('[Portfolio] Failed to fetch orders:', orderError);
+      }
+      const transformedOrders: Order[] = (ordersData as any[]).map((order) => ({
+        id: order.id || order.order_id || String(Math.random()),
+        owner: order.owner || "",
+        market: order.market || order.asset_id || "",
+        asset_id: order.asset_id || order.tokenID || "",
+        side: (order.side?.toUpperCase() || "BUY") as "BUY" | "SELL",
+        original_size: String(order.original_size || order.size || "0"),
+        size_matched: String(order.size_matched || "0"),
+        price: String(order.price || "0"),
+        type: (order.type || "GTC") as "GTC" | "GTD" | "FOK" | "IOC",
+        timestamp: order.timestamp || order.created_at || new Date().toISOString(),
+        outcome: order.outcome,
+        status: order.status
+      }));
+      console.log('[Portfolio] Transformed orders:', transformedOrders);
+      setOpenOrders(transformedOrders);
+
+      // Fetch positions from Polymarket Data API if we have safe address
+      if (safeAddress) {
+        try {
+          // Use correct query parameter 'user' and optional filters
+          const positionsUrl = `https://data-api.polymarket.com/positions?user=${safeAddress}&sizeThreshold=1&limit=100`;
+          console.log('[Portfolio] Fetching positions from:', positionsUrl);
+          
+          const positionsResponse = await fetch(positionsUrl);
+          console.log('[Portfolio] Positions response status:', positionsResponse.status);
+          
+          if (positionsResponse.ok) {
+            const positionsData = await positionsResponse.json();
+            console.log('[Portfolio] Raw positions received:', positionsData?.length || 0);
+            // Map API response according to actual Polymarket API response
+            const transformedPositions: Position[] = (positionsData as any[]).map((pos) => ({
+              asset: pos.asset || "",
+              condition_id: pos.conditionId || "",
+              market: pos.title || "", // Use title from API
+              outcome: pos.outcome || "",
+              price: pos.curPrice || 0, // Current market price (from curPrice)
+              size: pos.size || 0, // Current position size
+              value: pos.currentValue || 0, // Current value (from currentValue)
+              avgPrice: pos.avgPrice || 0, // Average entry price
+              realizedPnl: pos.realizedPnl || 0, // Realized PnL
+              unrealizedPnl: pos.cashPnl || 0 // Unrealized PnL (from cashPnl)
+            }));
+            console.log('[Portfolio] Transformed positions:', transformedPositions);
+            setPositions(transformedPositions);
+          } else {
+            const errorText = await positionsResponse.text();
+            console.error('[Portfolio] Failed to fetch positions:', {
+              status: positionsResponse.status,
+              statusText: positionsResponse.statusText,
+              errorBody: errorText
+            });
+            setPositions([]);
+          }
+        } catch (posError) {
+          console.error('[Portfolio] Error fetching positions:', posError);
+          setPositions([]);
+        }
+      } else {
+        setPositions([]);
+      }
+
+      // Fetch balance and allowance using clobClient
+      try {
+        const balanceData = await clobClient.getBalanceAllowance({
+          asset_type: 'COLLATERAL' as any
+        });
+        if (balanceData) {
+          // Balance is in wei (6 decimals for USDC.e), convert to readable format
+          const balanceInWei = parseFloat(balanceData.balance) || 0;
+          const balanceInUsdc = balanceInWei / 1_000_000; // Convert from wei to USDC
+          console.log('[Portfolio] Balance raw:', balanceData.balance, 'converted:', balanceInUsdc);
+          setProxyWalletBalance(balanceInUsdc);
+        } else {
+          setProxyWalletBalance(0);
+        }
+      } catch (balanceError) {
+        console.error('[Portfolio] Failed to fetch balance:', balanceError);
+        setProxyWalletBalance(0);
+      }
+
+      console.log('[Portfolio] Successfully loaded:', {
+        orders: transformedOrders.length,
+        positions: positions.length,
+        balance: proxyWalletBalance
+      });
+    } catch (err) {
+      console.error('[Portfolio] Failed to refresh balances:', err);
+      setError('Failed to load portfolio data');
+      setOpenOrders([]);
+      setPositions([]);
+      setProxyWalletBalance(0);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Mount effect
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
-    if (status.canTrade) {
-      refreshBalances();
+    console.log('[Portfolio] Mount effect triggered:', { isMounted, canTrade, safeAddress });
+    if (!isMounted) {
+      console.log('[Portfolio] Component not mounted yet');
+      return;
     }
-  }, [status.canTrade, refreshBalances]);
+    if (!canTrade) {
+      console.log('[Portfolio] Cannot trade yet, skipping refresh');
+      return;
+    }
+    console.log('[Portfolio] Calling refreshBalances...');
+    refreshBalances();
+  }, [isMounted, canTrade, safeAddress]);
+
+  const cancelUserOrder = async (orderId: string) => {
+    if (!clobClient) return;
+    
+    try {
+      // TODO: Implement proper order cancellation
+      // Note: cancelOrder expects OrderPayload, not just orderId string
+      console.warn('[Portfolio] Order cancellation not fully implemented');
+      setError('Order cancellation not implemented yet');
+    } catch (err) {
+      console.error('[Portfolio] Failed to cancel order:', err);
+      setError('Failed to cancel order');
+    }
+  };
+
+  // Prevent hydration mismatch
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen">
+        <Header />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -59,7 +227,7 @@ export default function PortfolioPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold">Portfolio</h1>
-          {status.canTrade && (
+          {canTrade && (
             <button
               onClick={refreshBalances}
               disabled={isLoading}
@@ -72,7 +240,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Not Connected */}
-        {!status.hasWallet && (
+        {!hasWallet && (
           <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-12 text-center">
             <Wallet className="w-16 h-16 text-[#8b5cf6] mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Connect Wallet</h2>
@@ -83,7 +251,7 @@ export default function PortfolioPage() {
         )}
 
         {/* Connected but no trading credentials */}
-        {status.hasWallet && !status.canTrade && (
+        {hasWallet && !canTrade && (
           <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-12 text-center">
             <AlertCircle className="w-16 h-16 text-[#f59e0b] mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Setup Required</h2>
@@ -100,14 +268,14 @@ export default function PortfolioPage() {
         )}
 
         {/* Loading */}
-        {status.canTrade && isLoading && (
+        {canTrade && isLoading && (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-[#8b5cf6]" />
           </div>
         )}
 
         {/* Portfolio Content */}
-        {status.canTrade && !isLoading && (
+        {canTrade && !isLoading && (
           <div className="space-y-8">
             {/* Balance Card */}
             <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-6">
@@ -116,7 +284,7 @@ export default function PortfolioPage() {
                 Trading Balance
               </h2>
               <div className="text-4xl font-bold text-[#22c55e]">
-                {formatUsdc(proxyWalletUsdcBalance)}
+                {formatUsdc(proxyWalletBalance)}
               </div>
               <p className="text-sm text-[#71717a] mt-1">USDC.e in Proxy Wallet</p>
             </div>
@@ -168,7 +336,7 @@ export default function PortfolioPage() {
                               href={`/markets/${position.condition_id}`}
                               className="text-white hover:text-[#8b5cf6]"
                             >
-                              {position.market?.question || position.condition_id}
+                              {typeof position.market === 'string' ? position.market : position.market?.question || position.condition_id}
                             </a>
                           </td>
                           <td className="py-3 px-4">
@@ -186,10 +354,10 @@ export default function PortfolioPage() {
                             {position.size.toFixed(2)}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            ${position.avgPrice.toFixed(3)}
+                            ${position.avgPrice.toFixed(4)}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            ${position.price.toFixed(3)}
+                            ${position.price.toFixed(4)}
                           </td>
                           <td
                             className={`py-3 px-4 text-right font-medium ${
@@ -199,7 +367,7 @@ export default function PortfolioPage() {
                             }`}
                           >
                             {position.unrealizedPnl >= 0 ? "+" : ""}
-                            ${position.unrealizedPnl.toFixed(2)}
+                            ${Math.abs(position.unrealizedPnl).toFixed(2)}
                           </td>
                         </tr>
                       ))}

@@ -3,24 +3,11 @@
 /**
  * Client-side Providers Wrapper
  * 
- * This component wraps all providers that need client-side only rendering
- * Note: State management is now handled by Zustand (stores/polymarketStore.ts)
+ * Clean provider composition following official Polymarket patterns
+ * Architecture: WagmiProvider → QueryProvider → WalletProvider → TradingProvider → App
  */
 
-import dynamic from "next/dynamic";
-
-// Dynamic import Web3Provider to avoid SSR issues with WalletConnect/indexedDB
-const Web3Provider = dynamic(
-  () => import("./Web3Provider").then((mod) => mod.Web3Provider),
-  { 
-    ssr: false,
-    loading: () => (
-      <div className="min-h-screen bg-[#0a0a0b]">
-        {/* Loading placeholder */}
-      </div>
-    ),
-  }
-);
+import AllProviders from "@/providers";
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -28,8 +15,8 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   return (
-    <Web3Provider>
+    <AllProviders>
       {children}
-    </Web3Provider>
+    </AllProviders>
   );
 }
