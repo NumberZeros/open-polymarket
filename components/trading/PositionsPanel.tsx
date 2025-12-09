@@ -17,7 +17,7 @@ type TabType = "positions" | "orders" | "history";
 
 export function PositionsPanel() {
   const { isConnected } = useWallet();
-  const { clobClient, isTradingSessionComplete } = useTrading();
+  const { clobClient, isTradingSessionComplete, safeAddress } = useTrading();
   
   const [activeTab, setActiveTab] = useState<TabType>("positions");
   const [positions, setPositions] = useState<Position[]>([]);
@@ -37,21 +37,151 @@ export function PositionsPanel() {
       setHistory([]);
       return;
     }
+    
+    if (!safeAddress) {
+      console.warn("[PositionsPanel] No safe address available yet");
+      return;
+    }
 
     const fetchData = async () => {
+      console.log("[PositionsPanel] fetchData called with:", {
+        isServiceInitialized,
+        isConnected,
+        isTradingSessionComplete,
+        hasClobClient: !!clobClient,
+        safeAddress
+      });
+      
       setIsLoading(true);
       setError(null);
 
       try {
-        // TODO: Implement orders, positions and trade history with CLOB client
-        // Note: getOrders() is not available in current CLOB client API
-        console.warn("[PositionsPanel] Orders, positions and trade history not implemented yet");
-        setOrders([]);
-        setPositions([]);
-        setHistory([]);
+        console.log("[PositionsPanel] Starting data fetch, safeAddress:", safeAddress);
+        
+        // Fetch open orders and trade history using clobClient and Data API
+        let ordersData: any[] = [];
+        let historyData: any[] = [];
+        
+        try {
+          ordersData = await clobClient.getOpenOrders() as any[];
+        } catch (orderError) {
+          console.error("[PositionsPanel] Failed to fetch orders:", orderError);
+        }
+        
+        try {
+          const queryParams = new URLSearchParams();
+          queryParams.append('limit', '100');
+          queryParams.append('user', safeAddress!);
+          const tradesUrl = `https://data-api.polymarket.com/trades?${queryParams.toString()}`;
+          console.log("[PositionsPanel] Fetching trades from:", tradesUrl);
+          const tradesResponse = await fetch(tradesUrl);
+          if (tradesResponse.ok) {
+            historyData = await tradesResponse.json();
+          }
+        } catch (historyError) {
+          console.error("[PositionsPanel] Failed to fetch trade history:", historyError);
+        }
+        
+        console.log("[PositionsPanel] Raw data received:", {
+          ordersCount: ordersData?.length || 0,
+          historyCount: historyData?.length || 0
+        });
+
+        // Transform orders
+        const transformedOrders: Order[] = (ordersData as any[]).map((order) => ({
+          id: order.id || order.order_id || String(Math.random()),
+          owner: order.owner || "",
+          market: order.market || order.asset_id || "",
+          asset_id: order.asset_id || order.tokenID || "",
+          side: (order.side?.toUpperCase() || "BUY") as "BUY" | "SELL",
+          original_size: String(order.original_size || order.size || "0"),
+          size_matched: String(order.size_matched || "0"),
+          price: String(order.price || "0"),
+          type: (order.type || "GTC") as "GTC" | "GTD" | "FOK" | "IOC",
+          timestamp: order.timestamp || order.created_at || new Date().toISOString(),
+          outcome: order.outcome,
+          status: order.status
+        }));
+        console.log("[PositionsPanel] Transformed orders:", transformedOrders);
+        setOrders(transformedOrders);
+
+        // Transform trade history
+        const transformedHistory: Trade[] = (historyData as any[]).map((trade) => ({
+          id: trade.id || trade.trade_id || String(Math.random()),
+          taker_order_id: trade.taker_order_id || trade.id || "",
+          market: trade.market || "",
+          asset_id: trade.asset_id || "",
+          side: (trade.side?.toUpperCase() || "BUY") as "BUY" | "SELL",
+          size: String(trade.size || "0"),
+          fee_rate_bps: String(trade.fee_rate_bps || "0"),
+          price: String(trade.price || "0"),
+          status: trade.status || "completed",
+          match_time: trade.match_time || trade.timestamp || new Date().toISOString(),
+          last_update: trade.last_update || trade.timestamp || new Date().toISOString(),
+          outcome: trade.outcome,
+          maker_address: trade.maker_address,
+          trader_side: trade.trader_side,
+          transaction_hash: trade.transaction_hash
+        }));
+        console.log("[PositionsPanel] Transformed history:", transformedHistory);
+        setHistory(transformedHistory);
+
+        // Fetch positions from Polymarket Data API if we have safe address
+        if (safeAddress) {
+          try {
+            // Use correct query parameter 'user' and optional filters
+            const positionsUrl = `https://data-api.polymarket.com/positions?user=${safeAddress}&sizeThreshold=1&limit=100`;
+            console.log("[PositionsPanel] Fetching positions from:", positionsUrl);
+            
+            const positionsResponse = await fetch(positionsUrl);
+            console.log("[PositionsPanel] Positions response status:", positionsResponse.status);
+            
+            if (positionsResponse.ok) {
+              const positionsData = await positionsResponse.json();
+              console.log("[PositionsPanel] Raw positions received:", positionsData?.length || 0);
+              // Map API response according to official documentation
+              const transformedPositions: Position[] = (positionsData as any[]).map((pos) => ({
+                asset: pos.asset || "",
+                condition_id: pos.conditionId || "",
+                market: pos.title || "", // Use title from API
+                outcome: pos.outcome || "",
+                price: pos.curPrice || 0, // Current market price (from curPrice)
+                size: pos.size || 0, // Current position size
+                value: pos.currentValue || 0, // Current value (from currentValue)
+                avgPrice: pos.avgPrice || 0, // Average entry price
+                realizedPnl: pos.realizedPnl || 0, // Realized PnL
+                unrealizedPnl: pos.cashPnl || 0 // Unrealized PnL (from cashPnl)
+              }));
+              console.log("[PositionsPanel] Transformed positions:", transformedPositions);
+              setPositions(transformedPositions);
+            } else {
+              const errorText = await positionsResponse.text();
+              console.error("[PositionsPanel] Failed to fetch positions:", {
+                status: positionsResponse.status,
+                statusText: positionsResponse.statusText,
+                errorBody: errorText
+              });
+              setPositions([]);
+            }
+          } catch (posError) {
+            console.error("[PositionsPanel] Error fetching positions:", posError);
+            setPositions([]);
+          }
+        } else {
+          setPositions([]);
+        }
+
+        console.log("[PositionsPanel] Successfully loaded:", {
+          orders: orders.length,
+          history: history.length,
+          positions: positions.length
+        });
       } catch (err) {
         console.error("[PositionsPanel] Error loading data:", err);
         setError("Failed to load trading data");
+        setOrders([]);
+        setHistory([]);
+        setPositions([]);
       } finally {
         setIsLoading(false);
       }
@@ -61,7 +191,7 @@ export function PositionsPanel() {
     const interval = setInterval(fetchData, 30000); // Refresh every 30s
 
     return () => clearInterval(interval);
-  }, [isServiceInitialized, clobClient]);
+  }, [isServiceInitialized, clobClient, safeAddress]);
 
   const handleCancelOrder = async (orderId: string) => {
     if (!isServiceInitialized || !clobClient) {

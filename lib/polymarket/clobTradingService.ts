@@ -726,19 +726,36 @@ export class ClobTradingService {
      * Get trade history
      * Note: Use Polymarket Data API directly as ClobClient doesn't have this method
      */
-    async getTradeHistory(marketId?: string): Promise<unknown[]> {
+    async getTradeHistory(params?: { marketId?: string; userAddress?: string }): Promise<unknown[]> {
         if (!this.clobClient) {
             console.error('[ClobTradingService] Not initialized');
             return [];
         }
         
         try {
-            // Use Data API endpoint instead
-            const url = marketId 
-                ? `${POLYMARKET_API.DATA}/trades?market=${marketId}`
-                : `${POLYMARKET_API.DATA}/trades`;
+            // Build query parameters
+            const queryParams = new URLSearchParams();
+            queryParams.append('limit', '100');
+            
+            if (params?.marketId) {
+                queryParams.append('market', params.marketId);
+            }
+            
+            if (params?.userAddress) {
+                queryParams.append('user', params.userAddress);
+            }
+            
+            const url = `${POLYMARKET_API.DATA}/trades?${queryParams.toString()}`;
+            console.log('[ClobTradingService] Fetching trades from:', url);
+            
             const response = await fetch(url);
+            if (!response.ok) {
+                console.error('[ClobTradingService] Trade history API error:', response.status, response.statusText);
+                return [];
+            }
+            
             const trades = await response.json();
+            console.log('[ClobTradingService] Fetched trades:', trades?.length || 0);
             return trades;
         } catch (error) {
             console.error('[ClobTradingService] Failed to get trade history:', error);

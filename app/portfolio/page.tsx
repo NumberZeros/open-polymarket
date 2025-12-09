@@ -12,6 +12,7 @@ import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { useAccount } from "wagmi";
 import { formatUsdc } from "@/lib/polymarket/marketApi";
+import type { Order, Position } from "@/lib/polymarket/types";
 import { 
   Wallet, 
   TrendingUp, 
@@ -28,36 +29,145 @@ export default function PortfolioPage() {
 
   const { isConnected } = useAccount();
   const { isConnected: isWalletConnected } = useWallet();
-  const { clobClient, isTradingSessionComplete } = useTrading();
+  const { clobClient, isTradingSessionComplete, safeAddress } = useTrading();
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [proxyWalletBalance, setProxyWalletBalance] = useState(0);
-  const [positions, setPositions] = useState<any[]>([]);
-  const [openOrders, setOpenOrders] = useState<any[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [openOrders, setOpenOrders] = useState<Order[]>([]);
 
   const hasWallet = isConnected && isWalletConnected;
   const canTrade = hasWallet && isTradingSessionComplete && !!clobClient;
 
   // Fetch portfolio data
   const refreshBalances = async () => {
-    if (!canTrade || !clobClient) return;
+    console.log('[Portfolio] refreshBalances called with:', {
+      canTrade,
+      hasWallet,
+      isConnected,
+      isWalletConnected,
+      isTradingSessionComplete,
+      hasClobClient: !!clobClient,
+      safeAddress
+    });
+    
+    if (!canTrade || !clobClient) {
+      console.warn('[Portfolio] Cannot trade or no CLOB client:', { canTrade, hasClobClient: !!clobClient });
+      return;
+    }
+    
+    if (!safeAddress) {
+      console.warn('[Portfolio] No safe address available yet');
+      return;
+    }
     
     setIsLoading(true);
     setError(null);
     
     try {
-      // TODO: Fetch open orders - getOrders() not available in current CLOB client
-      console.warn('[Portfolio] Order fetching not implemented yet');
-      setOpenOrders([]);
+      console.log('[Portfolio] Starting data fetch, safeAddress:', safeAddress);
       
-      // TODO: Fetch positions and balance from CLOB client
-      console.debug('[Portfolio] Positions and balance fetch not fully implemented');
-      setPositions([]);
-      setProxyWalletBalance(0);
+      // Fetch open orders directly from clobClient
+      let ordersData: any[] = [];
+      try {
+        ordersData = await clobClient.getOpenOrders() as any[];
+        console.log('[Portfolio] Raw orders received:', ordersData?.length || 0);
+      } catch (orderError) {
+        console.error('[Portfolio] Failed to fetch orders:', orderError);
+      }
+      const transformedOrders: Order[] = (ordersData as any[]).map((order) => ({
+        id: order.id || order.order_id || String(Math.random()),
+        owner: order.owner || "",
+        market: order.market || order.asset_id || "",
+        asset_id: order.asset_id || order.tokenID || "",
+        side: (order.side?.toUpperCase() || "BUY") as "BUY" | "SELL",
+        original_size: String(order.original_size || order.size || "0"),
+        size_matched: String(order.size_matched || "0"),
+        price: String(order.price || "0"),
+        type: (order.type || "GTC") as "GTC" | "GTD" | "FOK" | "IOC",
+        timestamp: order.timestamp || order.created_at || new Date().toISOString(),
+        outcome: order.outcome,
+        status: order.status
+      }));
+      console.log('[Portfolio] Transformed orders:', transformedOrders);
+      setOpenOrders(transformedOrders);
+
+      // Fetch positions from Polymarket Data API if we have safe address
+      if (safeAddress) {
+        try {
+          // Use correct query parameter 'user' and optional filters
+          const positionsUrl = `https://data-api.polymarket.com/positions?user=${safeAddress}&sizeThreshold=1&limit=100`;
+          console.log('[Portfolio] Fetching positions from:', positionsUrl);
+          
+          const positionsResponse = await fetch(positionsUrl);
+          console.log('[Portfolio] Positions response status:', positionsResponse.status);
+          
+          if (positionsResponse.ok) {
+            const positionsData = await positionsResponse.json();
+            console.log('[Portfolio] Raw positions received:', positionsData?.length || 0);
+            // Map API response according to actual Polymarket API response
+            const transformedPositions: Position[] = (positionsData as any[]).map((pos) => ({
+              asset: pos.asset || "",
+              condition_id: pos.conditionId || "",
+              market: pos.title || "", // Use title from API
+              outcome: pos.outcome || "",
+              price: pos.curPrice || 0, // Current market price (from curPrice)
+              size: pos.size || 0, // Current position size
+              value: pos.currentValue || 0, // Current value (from currentValue)
+              avgPrice: pos.avgPrice || 0, // Average entry price
+              realizedPnl: pos.realizedPnl || 0, // Realized PnL
+              unrealizedPnl: pos.cashPnl || 0 // Unrealized PnL (from cashPnl)
+            }));
+            console.log('[Portfolio] Transformed positions:', transformedPositions);
+            setPositions(transformedPositions);
+          } else {
+            const errorText = await positionsResponse.text();
+            console.error('[Portfolio] Failed to fetch positions:', {
+              status: positionsResponse.status,
+              statusText: positionsResponse.statusText,
+              errorBody: errorText
+            });
+            setPositions([]);
+          }
+        } catch (posError) {
+          console.error('[Portfolio] Error fetching positions:', posError);
+          setPositions([]);
+        }
+      } else {
+        setPositions([]);
+      }
+
+      // Fetch balance and allowance using clobClient
+      try {
+        const balanceData = await clobClient.getBalanceAllowance({
+          asset_type: 'COLLATERAL' as any
+        });
+        if (balanceData) {
+          // Balance is in wei (6 decimals for USDC.e), convert to readable format
+          const balanceInWei = parseFloat(balanceData.balance) || 0;
+          const balanceInUsdc = balanceInWei / 1_000_000; // Convert from wei to USDC
+          console.log('[Portfolio] Balance raw:', balanceData.balance, 'converted:', balanceInUsdc);
+          setProxyWalletBalance(balanceInUsdc);
+        } else {
+          setProxyWalletBalance(0);
+        }
+      } catch (balanceError) {
+        console.error('[Portfolio] Failed to fetch balance:', balanceError);
+        setProxyWalletBalance(0);
+      }
+
+      console.log('[Portfolio] Successfully loaded:', {
+        orders: transformedOrders.length,
+        positions: positions.length,
+        balance: proxyWalletBalance
+      });
     } catch (err) {
       console.error('[Portfolio] Failed to refresh balances:', err);
       setError('Failed to load portfolio data');
+      setOpenOrders([]);
+      setPositions([]);
+      setProxyWalletBalance(0);
     } finally {
       setIsLoading(false);
     }
@@ -69,9 +179,18 @@ export default function PortfolioPage() {
   }, []);
 
   useEffect(() => {
-    if (!isMounted || !canTrade) return;
+    console.log('[Portfolio] Mount effect triggered:', { isMounted, canTrade, safeAddress });
+    if (!isMounted) {
+      console.log('[Portfolio] Component not mounted yet');
+      return;
+    }
+    if (!canTrade) {
+      console.log('[Portfolio] Cannot trade yet, skipping refresh');
+      return;
+    }
+    console.log('[Portfolio] Calling refreshBalances...');
     refreshBalances();
-  }, [isMounted, canTrade]);
+  }, [isMounted, canTrade, safeAddress]);
 
   const cancelUserOrder = async (orderId: string) => {
     if (!clobClient) return;
@@ -235,10 +354,10 @@ export default function PortfolioPage() {
                             {position.size.toFixed(2)}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            ${position.avgPrice.toFixed(3)}
+                            ${position.avgPrice.toFixed(4)}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            ${position.price.toFixed(3)}
+                            ${position.price.toFixed(4)}
                           </td>
                           <td
                             className={`py-3 px-4 text-right font-medium ${
@@ -248,7 +367,7 @@ export default function PortfolioPage() {
                             }`}
                           >
                             {position.unrealizedPnl >= 0 ? "+" : ""}
-                            ${position.unrealizedPnl.toFixed(2)}
+                            ${Math.abs(position.unrealizedPnl).toFixed(2)}
                           </td>
                         </tr>
                       ))}
