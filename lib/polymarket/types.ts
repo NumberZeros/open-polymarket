@@ -82,6 +82,9 @@ export interface Market {
   featured?: boolean;
   competitive?: number;
   
+  // Category
+  category?: string;  // E.g., "Sports", "Politics", "Crypto", "Entertainment"
+  
   // From events
   eventTitle?: string;
   eventSlug?: string;
@@ -126,6 +129,20 @@ export interface Event {
   featured?: boolean;
   banner?: string;
   icon?: string;
+}
+
+export interface Tag {
+  id: string;
+  label: string | null;
+  slug: string | null;
+  forceShow?: boolean | null;
+  publishedAt?: string | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  forceHide?: boolean | null;
+  isCarousel?: boolean | null;
 }
 
 // ============= Order Types =============

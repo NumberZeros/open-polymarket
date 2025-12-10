@@ -34,7 +34,8 @@ export type MarketCategory =
   | "entertainment" 
   | "politics"
   | "crypto"
-  | "science";
+  | "science"
+  | "ended"
 
 export type SortOption = 
   | "volume-desc" 
@@ -64,10 +65,11 @@ const CATEGORIES: Array<{ id: MarketCategory; label: string; icon: React.Element
   { id: "all", label: "All", icon: Sparkles, color: "text-white" },
   { id: "trending", label: "Trending", icon: Flame, color: "text-orange-500" },
   { id: "ending-soon", label: "Ending Soon", icon: Clock, color: "text-yellow-500" },
+  { id: "crypto", label: "Crypto", icon: TrendingUp, color: "text-purple-500" },
   { id: "sports", label: "Sports", icon: Trophy, color: "text-green-500" },
   { id: "entertainment", label: "Entertainment", icon: Tv, color: "text-pink-500" },
   { id: "politics", label: "Politics", icon: Vote, color: "text-blue-500" },
-  { id: "crypto", label: "Crypto", icon: TrendingUp, color: "text-purple-500" },
+  { id: "ended", label: "Ended", icon: Trophy, color: "text-gray-500" },
 ];
 
 const SORT_OPTIONS: Array<{ id: SortOption; label: string }> = [
@@ -99,11 +101,21 @@ export function MarketFilters({
     setShowSortDropdown(false);
   }, [filters, onFiltersChange]);
 
-  const handleSearchChange = useCallback((search: string) => {
-    onFiltersChange({ ...filters, search });
-  }, [filters, onFiltersChange]);
+  const [searchInput, setSearchInput] = useState(filters.search);
+
+  const handleSearchSubmit = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      // When searching, reset category to "all" to search across all categories
+      onFiltersChange({ 
+        ...filters, 
+        search: searchInput,
+        category: "all"
+      });
+    }
+  }, [searchInput, filters, onFiltersChange]);
 
   const clearSearch = useCallback(() => {
+    setSearchInput("");
     onFiltersChange({ ...filters, search: "" });
   }, [filters, onFiltersChange]);
 
@@ -116,12 +128,13 @@ export function MarketFilters({
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#71717a]" />
         <input
           type="text"
-          value={filters.search}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          placeholder="Search markets..."
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          onKeyDown={handleSearchSubmit}
+          placeholder="Search markets... (Press Enter)"
           className="w-full pl-12 pr-10 py-3 bg-[#16161a] rounded-xl border border-[#27272a] text-white placeholder-[#71717a] focus:border-[#8b5cf6] focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-colors"
         />
-        {filters.search && (
+        {searchInput && (
           <button
             onClick={clearSearch}
             className="absolute right-4 top-1/2 -translate-y-1/2 text-[#71717a] hover:text-white transition-colors"

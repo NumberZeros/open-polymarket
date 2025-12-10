@@ -78,7 +78,7 @@ export default function TradingSetupPage() {
 
   // Complete - go to markets
   const handleComplete = () => {
-    router.push("/markets");
+    router.push("/");
   };
 
   // Prevent hydration mismatch by not rendering until mounted

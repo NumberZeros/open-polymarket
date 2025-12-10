@@ -44,7 +44,7 @@
  * - Use CLOB API only for real-time trading data
  */
 
-import type { Market, Event, OrderBook, Trade, PaginatedResponse } from "./types";
+import type { Market, Event, OrderBook, Trade, PaginatedResponse, Tag } from "./types";
 
 /**
  * Get API URL for internal proxy
@@ -84,21 +84,21 @@ const buildUrl = (base: string, path: string, params?: Record<string, string | n
 /**
  * Get all active markets from Polymarket Gamma API
  * 
- * Uses /markets endpoint directly for accurate market data.
- * Note: For better performance when fetching many markets, consider using getEvents()
- * which returns events containing markets.
+ * Uses /markets endpoint directly with full filtering support.
  * 
  * @see https://docs.polymarket.com/api-reference/markets/list-markets
  */
 export async function getMarkets(params?: {
-  limit?: number;          // Number of markets to return (0-10000)
+  limit?: number;          // Number of markets to return
   offset?: number;         // Pagination offset
   closed?: boolean;        // Include closed markets (default: false)
-  order?: string;          // Order by field (e.g., 'volumeNum' for volume)
+  order?: string;          // Order by field (e.g., 'volumeNum')
   ascending?: boolean;     // Sort ascending (default: false = descending)
-  tag_id?: string;         // Filter by tag ID (optional)
+  tag_id?: number;         // Filter by tag ID
+  active?: boolean;        // Filter by active status
+  end_date_min?: string;   // Filter markets ending after this date (ISO string)
+  end_date_max?: string;   // Filter markets ending before this date (ISO string)
 }): Promise<PaginatedResponse<Market>> {
-  // Use Gamma API /markets endpoint directly
   const url = buildUrl(getApiUrl("gamma"), "/markets", {
     limit: params?.limit || 100,
     offset: params?.offset || 0,
@@ -106,6 +106,9 @@ export async function getMarkets(params?: {
     order: params?.order || "volumeNum",  // Order by volume
     ascending: params?.ascending ?? false,  // Descending order
     tag_id: params?.tag_id,
+    active: params?.active,
+    end_date_min: params?.end_date_min,
+    end_date_max: params?.end_date_max,
   });
 
   const response = await fetch(url);
@@ -115,10 +118,9 @@ export async function getMarkets(params?: {
   
   const data = await response.json();
   
-  // Gamma API /markets returns array of markets directly
   return {
-    data: Array.isArray(data) ? data : data.data || [],
-    next_cursor: data.next_cursor,
+    data: Array.isArray(data) ? data : [],
+    next_cursor: undefined,
   };
 }
 
@@ -156,20 +158,8 @@ export async function getMarketsFromEvents(params?: {
   const events = await response.json();
   const eventsList = Array.isArray(events) ? events : [];
   
-  // Extract all markets from events
-  const allMarkets: Market[] = [];
-  eventsList.forEach((event: any) => {
-    if (event.markets && Array.isArray(event.markets)) {
-      event.markets.forEach((market: any) => {
-        // Preserve all market fields and add event context
-        allMarkets.push({
-          ...market,
-          eventTitle: event.title,
-          eventSlug: event.slug,
-        });
-      });
-    }
-  });
+  // Extract markets from events (don't filter closed by default in this function)
+  const allMarkets = extractMarketsFromEvents(eventsList, false);
   
   return {
     data: allMarkets,
@@ -216,13 +206,12 @@ export async function getMarketBySlug(slug: string): Promise<Market | null> {
 
 /**
  * Get sampling/featured markets - returns top active markets
- * Uses /markets endpoint directly with volume ordering
  */
 export async function getSamplingMarkets(): Promise<Market[]> {
   const url = buildUrl(getApiUrl("gamma"), "/markets", {
     limit: 20,
     closed: false,
-    order: "volumeNum",  // Order by volume for featured/popular markets
+    order: "volumeNum",
     ascending: false,
   });
   
@@ -233,7 +222,7 @@ export async function getSamplingMarkets(): Promise<Market[]> {
   }
   
   const data = await response.json();
-  return Array.isArray(data) ? data : data.data || [];
+  return Array.isArray(data) ? data : [];
 }
 
 // ============= Event Endpoints (Gamma API) =============
@@ -313,8 +302,19 @@ export async function getEventBySlug(slug: string): Promise<Event | null> {
  * Get all available tags for filtering markets
  * @see https://docs.polymarket.com/api-reference/tags/list-tags
  */
-export async function getTags(): Promise<any[]> {
-  const url = `${getApiUrl("gamma")}/tags`;
+export async function getTags(params?: {
+  limit?: number;
+  offset?: number;
+  order?: string;
+  ascending?: boolean;
+}): Promise<Tag[]> {
+  const url = buildUrl(getApiUrl("gamma"), "/tags", {
+    limit: params?.limit || 100,
+    offset: params?.offset,
+    order: params?.order,
+    ascending: params?.ascending,
+  });
+  
   const response = await fetch(url);
   
   if (!response.ok) {
@@ -334,6 +334,63 @@ export async function getSportsTags(): Promise<any> {
   
   if (!response.ok) {
     throw new Error(`Failed to fetch sports tags: ${response.statusText}`);
+  }
+  
+  return response.json();
+}
+
+// ============= Search Endpoint =============
+
+/**
+ * Search markets, events, and profiles
+ * Uses the public-search endpoint with server-side filtering
+ * 
+ * @see https://docs.polymarket.com/api-reference/search/search-markets-events-and-profiles
+ */
+export async function searchMarkets(params: {
+  q: string;                      // Required: Search query
+  events_status?: "active" | "closed" | "all";  // Filter by event status
+  limit_per_type?: number;        // Max results per type (default: 10)
+  page?: number;                  // Page number for pagination
+  events_tag?: string[];          // Filter by event tags
+  keep_closed_markets?: number;   // 1 to include closed markets, 0 to exclude
+  sort?: string;                  // Sort field
+  ascending?: boolean;            // Sort direction
+  search_tags?: boolean;          // Include tag search
+  search_profiles?: boolean;      // Include profile search
+}): Promise<{
+  events: Event[];
+  tags: any[];
+  profiles: any[];
+  pagination: {
+    hasMore: boolean;
+    totalResults: number;
+  };
+}> {
+  const queryParams: Record<string, string | number | boolean | undefined> = {
+    q: params.q,
+    events_status: params.events_status || "active",
+    limit_per_type: params.limit_per_type || 20,
+    page: params.page || 1,
+    keep_closed_markets: params.keep_closed_markets ?? 0,  // Default: exclude closed
+    sort: params.sort,
+    ascending: params.ascending,
+    search_tags: params.search_tags ?? false,
+    search_profiles: params.search_profiles ?? false,
+  };
+
+  // Add events_tag as array parameters
+  if (params.events_tag && params.events_tag.length > 0) {
+    params.events_tag.forEach((tag, index) => {
+      queryParams[`events_tag[${index}]`] = tag;
+    });
+  }
+
+  const url = buildUrl(getApiUrl("gamma"), "/public-search", queryParams);
+  
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to search markets: ${response.statusText}`);
   }
   
   return response.json();
@@ -565,4 +622,37 @@ export function formatUsdc(amount: string | number): string {
  */
 export function formatPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
+}
+
+/**
+ * Helper function to extract markets from events
+ * Adds event context to each market
+ */
+export function extractMarketsFromEvents(events: any[], filterClosed: boolean = true): Market[] {
+  const markets: Market[] = [];
+  
+  if (!Array.isArray(events)) {
+    return markets;
+  }
+  
+  events.forEach((event: any) => {
+    if (event.markets && Array.isArray(event.markets)) {
+      event.markets.forEach((market: any) => {
+        // Filter closed markets if requested
+        if (filterClosed && market.closed) {
+          return;
+        }
+        
+        // Add event context to market
+        markets.push({
+          ...market,
+          eventTitle: event.title,
+          eventSlug: event.slug,
+          eventId: event.id,
+        });
+      });
+    }
+  });
+  
+  return markets;
 }
