@@ -53,7 +53,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
     // Try to connect (optional - will fallback to polling if fails)
     connect().catch(() => {
-      console.warn("[WebSocket] Connection unavailable, using polling mode");
+      // Silently fall back to polling mode
     });
 
     // Cleanup

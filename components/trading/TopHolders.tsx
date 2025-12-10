@@ -9,6 +9,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Users, Loader2 } from "lucide-react";
+import { formatAddress } from "@/utils/format";
 
 interface Holder {
   address: string;
@@ -62,10 +63,6 @@ export function TopHolders({ tokenId, outcome }: TopHoldersProps) {
       fetchTopHolders();
     }
   }, [tokenId]);
-
-  const formatAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  };
 
   if (isLoading) {
     return (

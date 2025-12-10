@@ -20,6 +20,7 @@ import {
   formatPercent,
 } from "@/lib/polymarket/marketApi";
 import type { Market } from "@/lib/polymarket/types";
+import { getMarketTokens, getSelectedToken, getSelectedPrice } from "@/lib/polymarket/tokenUtils";
 import { 
   ArrowLeft, 
   Clock, 
@@ -30,6 +31,7 @@ import {
   BarChart3,
   Share2,
   Bookmark,
+  AlertCircle,
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 
@@ -43,9 +45,56 @@ export function MarketDetailClient({ market }: MarketDetailClientProps) {
 
   const prices = parseOutcomePrices(market);
   
-  // Safely get tokens if they exist, otherwise use prices from parseOutcomePrices
-  const yesToken = market.tokens?.find?.((t) => t.outcome === "Yes");
-  const noToken = market.tokens?.find?.((t) => t.outcome === "No");
+  // Safely get tokens if they exist, otherwise construct from clobTokenIds
+  const tokensArray = market.tokens && Array.isArray(market.tokens) ? market.tokens : [];
+  
+  // Fallback: If no tokens array, construct from clobTokenIds
+  let yesToken = tokensArray.find((t) => t.outcome === "Yes");
+  let noToken = tokensArray.find((t) => t.outcome === "No");
+  
+  // If tokens not found but clobTokenIds exists, construct tokens
+  if (!yesToken && !noToken && market.clobTokenIds) {
+    try {
+      let tokenIds: string[] = [];
+      if (typeof market.clobTokenIds === 'string') {
+        tokenIds = JSON.parse(market.clobTokenIds);
+      } else if (Array.isArray(market.clobTokenIds)) {
+        tokenIds = market.clobTokenIds;
+      }
+      
+      // Parse outcomes
+      const outcomes = typeof market.outcomes === 'string' 
+        ? JSON.parse(market.outcomes) 
+        : market.outcomes;
+      
+      if (Array.isArray(outcomes) && tokenIds.length >= 2) {
+        // Find Yes and No token IDs
+        const yesIndex = outcomes.findIndex((o: string) => o.toLowerCase() === "yes");
+        const noIndex = outcomes.findIndex((o: string) => o.toLowerCase() === "no");
+        
+        if (yesIndex >= 0 && tokenIds[yesIndex]) {
+          yesToken = {
+            token_id: tokenIds[yesIndex].replace(/^["']|["']$/g, '').trim(),
+            outcome: "Yes",
+            price: prices.yes,
+            winner: false,
+          };
+        }
+        
+        if (noIndex >= 0 && tokenIds[noIndex]) {
+          noToken = {
+            token_id: tokenIds[noIndex].replace(/^["']|["']$/g, '').trim(),
+            outcome: "No",
+            price: prices.no,
+            winner: false,
+          };
+        }
+      }
+    } catch (err) {
+      // Failed to parse clobTokenIds, will use fallback
+    }
+  }
+  
   const selectedToken = selectedOutcome === "Yes" ? yesToken : noToken;
   const selectedPrice = selectedToken?.price ?? (selectedOutcome === "Yes" ? prices.yes : prices.no);
 
@@ -242,26 +291,57 @@ export function MarketDetailClient({ market }: MarketDetailClientProps) {
             </div>
 
             {/* Tab Content */}
-            {activeTab === "chart" && selectedToken?.token_id && (
-              <PriceChart 
-                tokenId={selectedToken.token_id}
-                outcome={selectedOutcome}
-                height={350}
-              />
+            {activeTab === "chart" && (
+              <>
+                {selectedToken && selectedToken.token_id ? (
+                  <PriceChart 
+                    tokenId={selectedToken.token_id}
+                    outcome={selectedOutcome}
+                    height={350}
+                  />
+                ) : (
+                  <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-8 text-center">
+                    <AlertCircle className="w-12 h-12 text-[#71717a] mx-auto mb-4" />
+                    <p className="text-[#a1a1aa]">
+                      {!selectedToken ? "No token data available for this outcome" : "Price chart not available for this market"}
+                    </p>
+                  </div>
+                )}
+              </>
             )}
 
-            {activeTab === "orderbook" && selectedToken?.token_id && (
-              <LiveOrderBook 
-                tokenId={selectedToken.token_id}
-                maxLevels={10}
-              />
+            {activeTab === "orderbook" && (
+              <>
+                {selectedToken && selectedToken.token_id ? (
+                  <LiveOrderBook 
+                    tokenId={selectedToken.token_id}
+                    maxLevels={10}
+                  />
+                ) : (
+                  <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-8 text-center">
+                    <AlertCircle className="w-12 h-12 text-[#71717a] mx-auto mb-4" />
+                    <p className="text-[#a1a1aa]">
+                      {!selectedToken ? "No token data available for this outcome" : "Order book not available for this market"}
+                    </p>
+                  </div>
+                )}
+              </>
             )}
 
             {activeTab === "trades" && (
-              <TradeHistory 
-                marketId={market.conditionId || market.condition_id || ''}
-                limit={20}
-              />
+              <>
+                {market.conditionId || market.condition_id ? (
+                  <TradeHistory 
+                    marketId={market.conditionId || market.condition_id || ''}
+                    limit={20}
+                  />
+                ) : (
+                  <div className="bg-[#16161a] rounded-xl border border-[#27272a] p-8 text-center">
+                    <AlertCircle className="w-12 h-12 text-[#71717a] mx-auto mb-4" />
+                    <p className="text-[#a1a1aa]">Trade history not available for this market</p>
+                  </div>
+                )}
+              </>
             )}
           </motion.div>
 

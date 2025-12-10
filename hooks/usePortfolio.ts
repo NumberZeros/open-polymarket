@@ -5,6 +5,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
+import { CACHE_TIMES, CACHE_GARBAGE_COLLECTION_TIMES, API_LIMITS } from "@/lib/constants";
 import type { Order, Trade, Position } from "@/lib/polymarket/types";
 
 // ============= Query Keys =============
@@ -53,7 +54,6 @@ export function usePositions({ safeAddress, enabled = true }: UsePositionsOption
       const response = await fetch(positionsUrl);
       
       if (!response.ok) {
-        console.error("[usePositions] Failed to fetch:", response.statusText);
         return [];
       }
 
@@ -76,8 +76,8 @@ export function usePositions({ safeAddress, enabled = true }: UsePositionsOption
       return positions;
     },
     enabled: enabled && !!safeAddress,
-    staleTime: 15 * 1000, // 15 seconds
-    gcTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: CACHE_TIMES.POSITIONS,
+    gcTime: CACHE_GARBAGE_COLLECTION_TIMES.POSITIONS,
     retry: 1,
   });
 }
@@ -113,14 +113,13 @@ export function useOrders({ safeAddress, clobClient, enabled = true }: UseOrders
         }));
 
         return orders;
-      } catch (error) {
-        console.error("[useOrders] Failed to fetch:", error);
+      } catch {
         return [];
       }
     },
     enabled: enabled && !!clobClient && !!safeAddress,
-    staleTime: 10 * 1000, // 10 seconds - orders change frequently
-    gcTime: 2 * 60 * 1000,
+    staleTime: CACHE_TIMES.ORDERS,
+    gcTime: CACHE_GARBAGE_COLLECTION_TIMES.ORDERS,
     retry: 1,
   });
 }
@@ -144,7 +143,6 @@ export function useTrades({ safeAddress, enabled = true }: UseTradesOptions) {
       const response = await fetch(tradesUrl);
 
       if (!response.ok) {
-        console.error("[useTrades] Failed to fetch:", response.statusText);
         return [];
       }
 
@@ -172,8 +170,8 @@ export function useTrades({ safeAddress, enabled = true }: UseTradesOptions) {
       return trades;
     },
     enabled: enabled && !!safeAddress,
-    staleTime: 15 * 1000, // 15 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: CACHE_TIMES.TRADES,
+    gcTime: CACHE_GARBAGE_COLLECTION_TIMES.TRADES,
     retry: 1,
   });
 }
@@ -203,14 +201,13 @@ export function useBalance({ safeAddress, clobClient, enabled = true }: UseOrder
         const balanceInUsdc = balanceInWei / 1_000_000;
         
         return balanceInUsdc;
-      } catch (error) {
-        console.error("[useBalance] Failed to fetch:", error);
+      } catch {
         return 0;
       }
     },
     enabled: enabled && !!clobClient && !!safeAddress,
-    staleTime: 20 * 1000, // 20 seconds
-    gcTime: 2 * 60 * 1000,
+    staleTime: CACHE_TIMES.BALANCE,
+    gcTime: CACHE_GARBAGE_COLLECTION_TIMES.BALANCE,
     retry: 1,
   });
 }

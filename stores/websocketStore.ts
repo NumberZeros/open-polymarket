@@ -1,14 +1,12 @@
 /**
- * WebSocket Store (Zustand)
- * 
- * Centralized WebSocket state management for real-time market data.
- * Single connection shared across the entire app.
+ * WebSocket Store
+ * Centralized state management for real-time market data
  */
 
 import { create } from "zustand";
 import { getWebSocketClient, type WSMessage, type PriceUpdate, type BookUpdate, type TradeUpdate } from "@/lib/polymarket/websocket";
 
-// ============= Types =============
+// Types
 
 interface WebSocketState {
   // Connection
@@ -55,8 +53,6 @@ interface WebSocketActions {
 
 type WebSocketStore = WebSocketState & WebSocketActions;
 
-// ============= Initial State =============
-
 const initialState: WebSocketState = {
   isConnected: false,
   connectionError: null,
@@ -68,8 +64,6 @@ const initialState: WebSocketState = {
   bookSubscriptions: new Set(),
   tradeSubscriptions: new Set(),
 };
-
-// ============= Store =============
 
 export const useWebSocketStore = create<WebSocketStore>((set, get) => ({
   ...initialState,
@@ -226,66 +220,7 @@ export const useWebSocketStore = create<WebSocketStore>((set, get) => ({
   },
 }));
 
-// ============= Initialization Hook =============
-
-/**
- * Hook to initialize WebSocket store (call once in root component)
- */
-export function useInitWebSocket() {
-  const connect = useWebSocketStore((state) => state.connect);
-  const setConnectionStatus = useWebSocketStore((state) => state.setConnectionStatus);
-  const updatePrice = useWebSocketStore((state) => state.updatePrice);
-  const updateOrderBook = useWebSocketStore((state) => state.updateOrderBook);
-  const addTrade = useWebSocketStore((state) => state.addTrade);
-
-  React.useEffect(() => {
-    const client = getWebSocketClient();
-
-    // Setup message handler
-    const unsubscribeMessage = client.onMessage((message: WSMessage) => {
-      switch (message.type) {
-        case "price_change": {
-          const data = message.data as PriceUpdate;
-          updatePrice(data.asset_id, data);
-          break;
-        }
-        case "book_update": {
-          const data = message.data as BookUpdate;
-          updateOrderBook(data.asset_id, data);
-          break;
-        }
-        case "trade": {
-          const data = message.data as TradeUpdate;
-          addTrade(data);
-          break;
-        }
-      }
-    });
-
-    // Setup connection handlers
-    const unsubscribeConnect = client.onConnect(() => {
-      setConnectionStatus(true);
-    });
-
-    const unsubscribeDisconnect = client.onDisconnect(() => {
-      setConnectionStatus(false);
-    });
-
-    // Try to connect (optional - will fallback to polling if fails)
-    connect().catch(() => {
-      console.warn("[WebSocketStore] Initial connection failed, using polling mode");
-    });
-
-    // Cleanup
-    return () => {
-      unsubscribeMessage();
-      unsubscribeConnect();
-      unsubscribeDisconnect();
-    };
-  }, [connect, setConnectionStatus, updatePrice, updateOrderBook, addTrade]);
-}
-
-// ============= Selector Hooks =============
+// Selector Hooks
 
 /**
  * Hook to get live price for an asset

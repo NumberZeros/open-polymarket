@@ -6,9 +6,8 @@
 
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { getMarketTrades } from "@/lib/polymarket/marketApi";
+import { useTrades } from "@/hooks/useMarketData";
 import { useLiveTrades } from "@/stores/websocketStore";
 import { Loader2, ArrowUpRight, ArrowDownRight, History, Zap } from "lucide-react";
 import type { Trade } from "@/lib/polymarket/types";
@@ -40,39 +39,21 @@ export function TradeHistory({
   limit = 20,
   showLive = true,
 }: TradeHistoryProps) {
-  const [historicalTrades, setHistoricalTrades] = useState<DisplayTrade[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Use React Query to fetch trades
+  const { data: trades = [], isLoading, error: queryError, refetch } = useTrades({ marketId, limit });
+  const error = queryError ? "Failed to load trades" : null;
+
+  // Convert to DisplayTrade format
+  const historicalTrades: DisplayTrade[] = trades.map((trade: Trade) => ({
+    id: trade.id,
+    side: trade.side,
+    price: trade.price,
+    size: trade.size,
+    timestamp: new Date(trade.match_time || Date.now()).getTime(),
+  }));
 
   // Live trades from WebSocket
   const liveTrades = useLiveTrades(showLive ? marketId : undefined, limit);
-
-  // Fetch historical trades
-  const fetchTrades = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      const trades = await getMarketTrades(marketId, { limit });
-      const displayTrades: DisplayTrade[] = trades.slice(0, limit).map((trade: Trade) => ({
-        id: trade.id,
-        side: trade.side,
-        price: trade.price,
-        size: trade.size,
-        timestamp: new Date(trade.match_time || Date.now()).getTime(),
-      }));
-      setHistoricalTrades(displayTrades);
-    } catch (err) {
-      console.error("[TradeHistory] Error:", err);
-      setError("Failed to load trades");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [marketId, limit]);
-
-  useEffect(() => {
-    fetchTrades();
-  }, [fetchTrades]);
 
   // Merge live and historical trades
   const allTrades: DisplayTrade[] = [
@@ -131,7 +112,7 @@ export function TradeHistory({
           <div className="text-center py-8">
             <p className="text-[#ef4444] text-sm mb-2">{error}</p>
             <button
-              onClick={fetchTrades}
+              onClick={() => refetch()}
               className="text-sm text-[#8b5cf6] hover:underline"
             >
               Try again

@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
       acceptingOrders: market.accepting_orders,
       endDate: market.end_date_iso,
       tokens: market.tokens?.map((token: any) => ({
-        id: token.token_id,
+        token_id: token.token_id,
         outcome: token.outcome,
         price: token.price,
       })) || [],

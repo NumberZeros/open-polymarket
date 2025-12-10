@@ -186,6 +186,42 @@ export async function getMarket(conditionId: string): Promise<Market | null> {
 }
 
 /**
+ * Get market from Gamma API by condition_id to get token information
+ * Falls back to CLOB API if not found on Gamma
+ * 
+ * @param conditionId - The market condition ID
+ */
+export async function getMarketWithTokens(conditionId: string): Promise<Market | null> {
+  try {
+    // Try to fetch from Gamma API first (has token data)
+    const url = buildUrl(getApiUrl("gamma"), "/markets", {
+      condition_id: conditionId,
+      limit: 1,
+    });
+    
+    console.log("[getMarketWithTokens] Fetching from Gamma API:", { conditionId, url });
+    const response = await fetch(url);
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (Array.isArray(data) && data.length > 0) {
+        console.log("[getMarketWithTokens] Found market in Gamma API with tokens:", {
+          conditionId,
+          hasTokens: !!data[0].tokens,
+          tokensCount: data[0].tokens?.length || 0,
+        });
+        return data[0];
+      }
+    }
+  } catch (error) {
+    console.warn("[getMarketWithTokens] Gamma API fetch failed, falling back to CLOB:", error);
+  }
+
+  // Fallback to CLOB API
+  return getMarket(conditionId);
+}
+
+/**
  * Get market by slug (from URL path)
  * Uses Gamma API for market metadata
  * 
@@ -437,13 +473,41 @@ export async function getMarketsByTag(params: {
  * Get order book for a token
  */
 export async function getOrderBook(tokenId: string): Promise<OrderBook> {
-  const response = await fetch(`${getApiUrl("clob")}/book?token_id=${tokenId}`);
+  const url = `${getApiUrl("clob")}/book?token_id=${tokenId}`;
   
-  if (!response.ok) {
-    throw new Error(`Failed to fetch order book: ${response.statusText}`);
+  try {
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch order book: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    
+    const data = await response.json();
+    
+    // Validate and log the structure
+    console.log("[getOrderBook] Raw response:", {
+      tokenId,
+      hasBids: Array.isArray(data.bids),
+      hasAsks: Array.isArray(data.asks),
+      bidsCount: data.bids?.length || 0,
+      asksCount: data.asks?.length || 0,
+      firstBid: data.bids?.[0],
+      firstAsk: data.asks?.[0],
+    });
+    
+    // Ensure bids and asks are arrays
+    const validatedData: OrderBook = {
+      ...data,
+      bids: Array.isArray(data.bids) ? data.bids : [],
+      asks: Array.isArray(data.asks) ? data.asks : [],
+    };
+    
+    return validatedData;
+  } catch (error) {
+    console.error("[getOrderBook] Error:", { tokenId, url, error });
+    throw error;
   }
-  
-  return response.json();
 }
 
 /**

@@ -12,6 +12,7 @@ import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { useAccount, usePublicClient, useWalletClient, useSignTypedData } from "wagmi";
 import { createEthersWallet } from "@/lib/polymarket/ethersWallet";
+import { useClipboard } from "@/hooks/useClipboard";
 
 import { deploySafe } from "@/lib/polymarket/relayerApi";
 import {
@@ -131,13 +132,7 @@ export default function WalletPage() {
     }
   };
 
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(label);
-    setTimeout(() => setCopied(null), 2000);
-  };
+  const { copied, copyToClipboard, isCopied } = useClipboard({ timeout: 2000 });
 
   const openPolygonScan = (address: string) => {
     window.open(`https://polygonscan.com/address/${address}`, "_blank");
@@ -411,7 +406,7 @@ export default function WalletPage() {
                       className="p-1 hover:bg-[#27272a] rounded transition-colors"
                       title="Copy address"
                     >
-                      {copied === "eoa" ? (
+                      {isCopied("eoa") ? (
                         <CheckCircle className="w-4 h-4 text-[#22c55e]" />
                       ) : (
                         <Copy className="w-4 h-4 text-[#a1a1aa]" />

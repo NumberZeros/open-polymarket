@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Header } from "@/components/layout/Header";
 import { MarketDetailClient } from "./MarketDetailClient";
-import { getMarketBySlug, getMarket } from "@/lib/polymarket/marketApi";
+import { getMarketWithTokens, getMarketBySlug } from "@/lib/polymarket/marketApi";
 import type { Market } from "@/lib/polymarket/types";
 
 interface MarketPageProps {
@@ -27,7 +27,7 @@ export default function MarketPage({ params }: MarketPageProps) {
         
         if (isConditionId) {
           console.log("[MarketPage] Fetching by condition_id:", slugId);
-          marketData = await getMarket(slugId);
+          marketData = await getMarketWithTokens(slugId);
         } else {
           console.log("[MarketPage] Fetching by slug:", slugId);
           marketData = await getMarketBySlug(slugId);

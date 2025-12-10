@@ -7,9 +7,9 @@
 
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { getOrderBook } from "@/lib/polymarket/marketApi";
+import { useOrderBook } from "@/hooks/useMarketData";
 import { useLiveOrderBook } from "@/stores/websocketStore";
 import { Loader2, BookOpen, TrendingUp, TrendingDown, Zap } from "lucide-react";
 import type { OrderBook as OrderBookType, OrderBookLevel } from "@/lib/polymarket/types";
@@ -36,9 +36,9 @@ export function LiveOrderBook({
   maxLevels = 10,
   showSpread = true,
 }: LiveOrderBookProps) {
-  const [staticBook, setStaticBook] = useState<OrderBookType | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Use React Query to fetch order book
+  const { data: staticBook, isLoading, error: queryError, refetch } = useOrderBook({ tokenId });
+  const error = queryError ? "Failed to load order book" : null;
 
   // Live order book from WebSocket (store)
   const liveBookUpdate = useLiveOrderBook(tokenId);
@@ -55,26 +55,6 @@ export function LiveOrderBook({
     } as OrderBookType;
   }, [liveBookUpdate]);
 
-  // Fetch static order book
-  const fetchOrderBook = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      const book = await getOrderBook(tokenId);
-      setStaticBook(book);
-    } catch (err) {
-      console.error("[LiveOrderBook] Error:", err);
-      setError("Failed to load order book");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [tokenId]);
-
-  useEffect(() => {
-    fetchOrderBook();
-  }, [fetchOrderBook]);
-
   // Use live book if available, otherwise static
   const currentBook = liveBook || staticBook;
 
@@ -85,6 +65,10 @@ export function LiveOrderBook({
     }
 
     const processLevels = (levels: OrderBookLevel[], isBid: boolean): ProcessedLevel[] => {
+      if (!levels || levels.length === 0) {
+        return [];
+      }
+
       const sorted = [...levels]
         .map(l => ({ price: parseFloat(l.price), size: parseFloat(l.size) }))
         .sort((a, b) => isBid ? b.price - a.price : a.price - b.price)
@@ -110,6 +94,18 @@ export function LiveOrderBook({
     const bestAsk = processedAsks[0]?.price || 0;
     const calculatedSpread = bestAsk - bestBid;
     const calculatedMid = (bestBid + bestAsk) / 2;
+
+    // Detailed logging for debugging
+    console.log("[LiveOrderBook] Processed data:", {
+      rawBidsCount: (currentBook.bids || []).length,
+      rawAsksCount: (currentBook.asks || []).length,
+      processedBidsCount: processedBids.length,
+      processedAsksCount: processedAsks.length,
+      bestBid,
+      bestAsk,
+      spread: calculatedSpread,
+      midPrice: calculatedMid,
+    });
 
     return {
       bids: processedBids,
@@ -154,11 +150,18 @@ export function LiveOrderBook({
         <div className="text-center py-8">
           <p className="text-[#ef4444] text-sm mb-2">{error}</p>
           <button
-            onClick={fetchOrderBook}
+            onClick={() => refetch()}
             className="text-sm text-[#8b5cf6] hover:underline"
           >
             Try again
           </button>
+        </div>
+      )}
+
+      {/* No Data State */}
+      {!isLoading && !error && !currentBook && (
+        <div className="text-center py-8">
+          <p className="text-[#71717a] text-sm">No order book data available</p>
         </div>
       )}
 
@@ -265,13 +268,7 @@ interface MiniOrderBookProps {
 }
 
 export function MiniOrderBook({ tokenId, levels = 3 }: MiniOrderBookProps) {
-  const [book, setBook] = useState<OrderBookType | null>(null);
-
-  useEffect(() => {
-    getOrderBook(tokenId)
-      .then(setBook)
-      .catch(console.error);
-  }, [tokenId]);
+  const { data: book } = useOrderBook({ tokenId });
 
   if (!book) return null;
 

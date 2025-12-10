@@ -19,20 +19,27 @@ import { Loader2, AlertCircle, ArrowRight, TrendingUp, Target } from "lucide-rea
 function estimateBuy(orderBook: OrderBook, usdcAmount: number): TradeEstimate {
   const bestAsk = orderBook.asks[0];
   const price = bestAsk ? parseFloat(bestAsk.price) : 0.5;
+  if (isNaN(price) || price <= 0) {
+    throw new Error("Invalid ask price for estimation");
+  }
   const shares = usdcAmount / price; // USDC amount / price = shares
+  const totalValue = shares * price; // Should equal usdcAmount
   return {
     cost: usdcAmount,
     shares: shares,
     avgPrice: price,
     slippage: 0,
-    potentialReturn: shares,
-    potentialProfit: shares - usdcAmount,
+    potentialReturn: totalValue, // Total value in USDC
+    potentialProfit: totalValue - usdcAmount, // Profit
   };
 }
 
 function estimateSell(orderBook: OrderBook, shareAmount: number): TradeEstimate {
   const bestBid = orderBook.bids[0];
   const price = bestBid ? parseFloat(bestBid.price) : 0.5;
+  if (isNaN(price) || price <= 0) {
+    throw new Error("Invalid bid price for estimation");
+  }
   const proceeds = shareAmount * price; // shares * price = USDC received
   return {
     cost: shareAmount,
@@ -68,18 +75,18 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
   const [success, setSuccess] = useState<string | null>(null);
 
   // Get the token for the selected outcome
-  // If market.tokens exists (from CLOB API), use it
+  // If market.tokens exists (from Gamma API), use it
   // Otherwise, derive from clobTokenIds and outcomes
   const selectedToken = (() => {
-    // Try to get from tokens array first (CLOB API)
-    if (market.tokens?.length) {
+    // Try to get from tokens array first (Gamma API)
+    if (market.tokens && Array.isArray(market.tokens) && market.tokens.length > 0) {
       return market.tokens.find((t) => 
         t.outcome?.toLowerCase() === selectedOutcome.toLowerCase()
       ) || null;
     }
     
     // Fallback: construct token object from clobTokenIds and outcomes
-    if (market.outcomes) {
+    if (market.outcomes && market.clobTokenIds) {
       try {
         // Parse outcomes
         const outcomes = typeof market.outcomes === 'string' 
