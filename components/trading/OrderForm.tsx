@@ -229,17 +229,7 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
       return;
     }
 
-    // Validate CLOB minimum shares (5 shares minimum)
-    const currentPrice = marketPrice?.midPrice || 0.5;
-    const shareSize = side === "BUY" 
-      ? parseFloat(amount) / (orderType === "LIMIT" ? parseFloat(limitPrice) : currentPrice)
-      : parseFloat(amount);
-    if (shareSize < 5) {
-      setError("Minimum order size is 5 shares");
-      return;
-    }
-
-    // Validate limit order price
+    // Validate limit order price first (for LIMIT orders)
     if (orderType === "LIMIT") {
       if (!limitPrice || isNaN(parseFloat(limitPrice))) {
         setError("Please enter a valid limit price");
@@ -256,6 +246,21 @@ export function OrderForm({ market, selectedOutcome = "Yes" }: OrderFormProps) {
         setError("Unable to estimate market order");
         return;
       }
+    }
+
+    // Validate CLOB minimum shares (5 shares minimum)
+    // Use the actual price that will be used for order execution
+    const executionPrice = orderType === "LIMIT" 
+      ? parseFloat(limitPrice)
+      : estimate!.avgPrice;
+    
+    const shareSize = side === "BUY" 
+      ? parseFloat(amount) / executionPrice
+      : parseFloat(amount);
+    
+    if (shareSize < 5) {
+      setError(`Minimum order size is 5 shares (you're ordering ${shareSize.toFixed(2)} shares at $${executionPrice.toFixed(3)})`);
+      return;
     }
 
     setIsLoading(true);

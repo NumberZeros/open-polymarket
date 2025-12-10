@@ -20,7 +20,6 @@ import {
   formatPercent,
 } from "@/lib/polymarket/marketApi";
 import type { Market } from "@/lib/polymarket/types";
-import { getMarketTokens, getSelectedToken, getSelectedPrice } from "@/lib/polymarket/tokenUtils";
 import { 
   ArrowLeft, 
   Clock, 

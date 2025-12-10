@@ -84,20 +84,28 @@ export function PositionsPanel({ marketId }: PositionsPanelProps = {}) {
 
   const isLoading = isLoadingPositions || isLoadingOrders || isLoadingHistory;
 
-  const handleCancelOrder = async (_orderId: string) => {
+  const handleCancelOrder = async (orderId: string) => {
     if (!isServiceInitialized || !clobClient) {
       setError("Trading service not initialized");
       return;
     }
 
+    setError(null);
+
     try {
-      // TODO: Implement proper order cancellation with CLOB client
-      // Note: cancelOrder expects OrderPayload, not just orderId string
-      console.warn('[PositionsPanel] Order cancellation not fully implemented');
-      setError("Order cancellation not implemented yet");
+      console.log('[PositionsPanel] Cancelling order:', orderId);
+      
+      // Cancel order using CLOB client
+      await clobClient.cancelOrder({ orderID: orderId });
+      
+      console.log('[PositionsPanel] ✅ Order cancelled successfully');
+      
+      // Refresh orders list
+      // The useOrders hook will automatically refetch
+      
     } catch (err) {
-      console.error('Failed to cancel order:', err);
-      setError("Failed to cancel order");
+      console.error('[PositionsPanel] Failed to cancel order:', err);
+      setError(err instanceof Error ? err.message : "Failed to cancel order");
     }
   };
 

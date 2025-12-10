@@ -60,16 +60,16 @@ const TIME_FRAMES: Array<{ id: TimeFrame; label: string; interval: string; fidel
 ];
 
 const CHART_COLORS = {
-  background: "#0a0a0b",
-  text: "#71717a",
-  grid: "#27272a",
-  upColor: "#22c55e",
-  downColor: "#ef4444",
-  lineColor: "#8b5cf6",
-  areaTopColor: "rgba(139, 92, 246, 0.4)",
-  areaBottomColor: "rgba(139, 92, 246, 0.0)",
-  volumeUp: "rgba(34, 197, 94, 0.5)",
-  volumeDown: "rgba(239, 68, 68, 0.5)",
+  background: "#0f0f12",
+  text: "#9ca3af",
+  grid: "#1e1e23",
+  upColor: "#10b981",
+  downColor: "#f43f5e",
+  lineColor: "#a78bfa",
+  areaTopColor: "rgba(167, 139, 250, 0.25)",
+  areaBottomColor: "rgba(167, 139, 250, 0.02)",
+  volumeUp: "rgba(16, 185, 129, 0.4)",
+  volumeDown: "rgba(244, 63, 94, 0.4)",
 };
 
 // ============= Component =============
@@ -290,83 +290,98 @@ export function PriceChart({
   }, [livePrice]);
 
   return (
-    <div className="bg-[#16161a] rounded-xl border border-[#27272a] overflow-hidden">
+    <div className="bg-gradient-to-br from-[#0f0f12] to-[#1a1a20] rounded-2xl border border-[#2d2d3a] shadow-xl overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#27272a]">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-6 py-4 border-b border-[#2d2d3a] bg-[#0f0f12]/50">
+        {/* Left Section: Title and Live Status */}
+        <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-[#8b5cf6]" />
-            <span className="font-medium">{outcome} Price</span>
+            <div className="p-2 rounded-lg bg-gradient-to-br from-[#a78bfa]/20 to-[#7c3aed]/10">
+              <BarChart3 className="w-5 h-5 text-[#a78bfa]" />
+            </div>
+            <span className="text-lg font-semibold text-white">{outcome} Price</span>
             {isRealtime && (
-              <div className="flex items-center gap-1 text-xs text-[#22c55e]">
-                <Wifi className="w-3 h-3 animate-pulse" />
-                <span>Live</span>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 ml-2 bg-[#10b981]/15 rounded-lg">
+                <Wifi className="w-3 h-3 text-[#10b981] animate-pulse" />
+                <span className="text-xs font-medium text-[#10b981]">Live</span>
               </div>
             )}
           </div>
-          
+        </div>
+
+        {/* Right Section: Price Info and Timeframe */}
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row items-start sm:items-center justify-between sm:justify-end gap-3">
+          {/* Price Change Info */}
           {priceChange && !isLoading && (
-            <div className={`flex items-center gap-1 text-sm ${
-              priceChange.value >= 0 ? "text-[#22c55e]" : "text-[#ef4444]"
-            }`}>
-              {priceChange.value >= 0 ? (
-                <TrendingUp className="w-4 h-4" />
-              ) : (
-                <TrendingDown className="w-4 h-4" />
-              )}
-              <span>
-                {priceChange.value >= 0 ? "+" : ""}
-                {(priceChange.value * 100).toFixed(1)}¢
-              </span>
-              <span className="text-[#71717a]">
+            <div className="flex items-center gap-3 px-4 py-2 bg-[#1a1a20] rounded-lg">
+              <div className={`flex items-center gap-1.5 ${
+                priceChange.value >= 0 ? "text-[#10b981]" : "text-[#f43f5e]"
+              }`}>
+                {priceChange.value >= 0 ? (
+                  <TrendingUp className="w-4 h-4" />
+                ) : (
+                  <TrendingDown className="w-4 h-4" />
+                )}
+                <span className="font-semibold">
+                  {priceChange.value >= 0 ? "+" : ""}
+                  {(priceChange.value * 100).toFixed(1)}¢
+                </span>
+              </div>
+              <span className={`text-sm ${
+                priceChange.percent >= 0 ? "text-[#10b981]" : "text-[#f43f5e]"
+              }`}>
                 ({priceChange.percent >= 0 ? "+" : ""}
                 {priceChange.percent.toFixed(1)}%)
               </span>
             </div>
           )}
 
+          {/* Current Price */}
           {lastPrice && (
-            <div className="text-sm text-[#a1a1aa]">
+            <div className="text-lg font-bold text-white">
               ${lastPrice.toFixed(3)}
             </div>
           )}
-        </div>
 
-        {/* Timeframe Selector */}
-        <div className="flex items-center gap-1 p-1 bg-[#0a0a0b] rounded-lg">
-          {TIME_FRAMES.map((frame) => (
-            <button
-              key={frame.id}
-              onClick={() => setTimeFrame(frame.id)}
-              className={`
-                px-3 py-1 rounded-md text-xs font-medium transition-colors
-                ${timeFrame === frame.id
-                  ? "bg-[#8b5cf6] text-white"
-                  : "text-[#71717a] hover:text-white"
-                }
-              `}
-            >
-              {frame.label}
-            </button>
-          ))}
+          {/* Timeframe Selector */}
+          <div className="flex items-center gap-1 p-1.5 bg-[#1a1a20] rounded-lg border border-[#2d2d3a]">
+            {TIME_FRAMES.map((frame) => (
+              <button
+                key={frame.id}
+                onClick={() => setTimeFrame(frame.id)}
+                className={`
+                  px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200
+                  ${timeFrame === frame.id
+                    ? "bg-gradient-to-r from-[#a78bfa] to-[#7c3aed] text-white shadow-lg shadow-purple-500/30"
+                    : "text-[#9ca3af] hover:text-white hover:bg-[#2d2d3a]"
+                  }
+                `}
+              >
+                {frame.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Chart Container */}
-      <div className="relative">
+      <div className="relative bg-[#0f0f12]" style={{ minHeight: `${height}px` }}>
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#16161a]/80 z-10">
-            <Loader2 className="w-8 h-8 text-[#8b5cf6] animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center bg-[#0f0f12]/80 z-10 backdrop-blur-sm rounded-lg">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="w-10 h-10 text-[#a78bfa] animate-spin" />
+              <p className="text-sm text-[#9ca3af]">Loading chart...</p>
+            </div>
           </div>
         )}
         
         {error && !isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#16161a]/80 z-10">
-            <div className="text-center">
-              <p className="text-[#ef4444] mb-2">{error}</p>
+          <div className="absolute inset-0 flex items-center justify-center bg-[#0f0f12]/80 z-10 backdrop-blur-sm rounded-lg">
+            <div className="text-center p-6">
+              <p className="text-[#f43f5e] mb-3 font-medium">{error}</p>
               <button
                 onClick={fetchData}
-                className="text-sm text-[#8b5cf6] hover:underline"
+                className="px-4 py-2 bg-[#a78bfa] hover:bg-[#8b5cf6] text-white rounded-lg text-sm font-medium transition-colors"
               >
                 Try again
               </button>
@@ -374,7 +389,7 @@ export function PriceChart({
           </div>
         )}
 
-        <div ref={chartContainerRef} />
+        <div ref={chartContainerRef} className="w-full" />
       </div>
     </div>
   );

@@ -188,17 +188,28 @@ export default function PortfolioPage() {
     refreshBalances();
   }, [isMounted, canTrade, safeAddress, refreshBalances]);
 
-  const cancelUserOrder = async (_orderId: string) => {
-    if (!clobClient) return;
+  const cancelUserOrder = async (orderId: string) => {
+    if (!clobClient) {
+      setError('Trading client not initialized');
+      return;
+    }
+    
+    setError(null);
     
     try {
-      // TODO: Implement proper order cancellation
-      // Note: cancelOrder expects OrderPayload, not just orderId string
-      console.warn('[Portfolio] Order cancellation not fully implemented');
-      setError('Order cancellation not implemented yet');
+      console.log('[Portfolio] Cancelling order:', orderId);
+      
+      // Cancel order using CLOB client
+      await clobClient.cancelOrder({ orderID: orderId });
+      
+      console.log('[Portfolio] ✅ Order cancelled successfully');
+      
+      // Refresh data after cancellation
+      refreshBalances();
+      
     } catch (err) {
       console.error('[Portfolio] Failed to cancel order:', err);
-      setError('Failed to cancel order');
+      setError(err instanceof Error ? err.message : 'Failed to cancel order');
     }
   };
 
