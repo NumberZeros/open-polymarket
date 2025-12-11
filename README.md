@@ -7,6 +7,14 @@
 
 A modern prediction markets trading platform built on Polymarket's CLOB API. Trade on real-world events with crypto.
 
+## 🌐 Live Platform
+
+**🚀 [Trade Now: https://polymarket.thosoft.xyz](https://polymarket.thosoft.xyz/)**
+
+💝 **Support the platform** - Your trades help us keep building! Every transaction on our platform helps support development and improvements.
+
+---
+
 ## 📖 Table of Contents
 
 - [Features](#-features)
