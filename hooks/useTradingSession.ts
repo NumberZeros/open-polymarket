@@ -91,12 +91,20 @@ export default function useTradingSession() {
         setCurrentStep("deploying");
         console.log("[TradingSession] Safe not deployed, deploying now...");
         await deploySafe(initializedRelayClient);
+        
+        // Verify Safe was actually deployed
+        const verifyDeployed = await isSafeDeployed(initializedRelayClient, derivedSafeAddressFromEoa);
+        if (!verifyDeployed) {
+          throw new Error("Safe deployment failed - unable to verify deployment");
+        }
         isDeployed = true;
+        console.log("[TradingSession] ✅ Safe deployment verified");
       } else {
         console.log("[TradingSession] ✅ Safe already deployed, skipping deployment");
       }
 
       // Step 5: Get User API Credentials (derive or create)
+      // NOTE: Safe MUST be deployed before deriving credentials
       let apiCreds = existingSession?.apiCredentials;
       if (
         !existingSession?.hasApiCredentials ||
