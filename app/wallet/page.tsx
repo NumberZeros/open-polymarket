@@ -11,8 +11,7 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
-import { useAccount, usePublicClient, useWalletClient, useSignTypedData } from "wagmi";
-import { createEthersWallet } from "@/lib/polymarket/ethersWallet";
+import { useAccount, usePublicClient, useSignTypedData } from "wagmi";
 import { useClipboard } from "@/hooks/useClipboard";
 
 import { deploySafe } from "@/lib/polymarket/relayerApi";
@@ -41,10 +40,9 @@ export default function WalletPage() {
   const { address, isConnected } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
   const publicClient = usePublicClient();
-  const { data: walletClient } = useWalletClient();
 
   // Provider hooks
-  const { isConnected: isWalletConnected } = useWallet();
+  const { isConnected: isWalletConnected, ethersSigner } = useWallet();
   const { 
     sessionError,
     tradingSession,
@@ -102,22 +100,15 @@ export default function WalletPage() {
     fetchProxyWalletInfo();
   }, [isMounted, fetchProxyWalletInfo]);
 
-  // Deploy Proxy Wallet (Safe)
+  // Deploy Proxy Wallet (Safe) - gasless via Polymarket Relayer
   const handleDeployProxyWallet = async () => {
-    if (!address || !walletClient) return;
+    if (!address || !ethersSigner) return;
 
     setIsDeploying(true);
     setDeployError(null);
 
     try {
-      // Create ethers wallet from viem wallet client
-      const ethersWallet = await createEthersWallet();
-      if (!ethersWallet) {
-        throw new Error('Failed to create ethers wallet');
-      }
-
-      // Cast to JsonRpcSigner since createEthersWallet returns a signer
-      const result = await deploySafe(ethersWallet as any);
+      const result = await deploySafe(ethersSigner);
 
       if (result.success) {
         // Refresh proxy wallet info after deployment

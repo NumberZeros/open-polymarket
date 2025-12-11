@@ -30,7 +30,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const { connectAsync } = useConnect();
   const connectors = useConnectors();
 
-  // Convert wagmi viem client to ethers signer
+  // Convert viem WalletClient to ethers Signer (for Polymarket SDK compatibility)
   useEffect(() => {
     if (wagmiWalletClient) {
       try {

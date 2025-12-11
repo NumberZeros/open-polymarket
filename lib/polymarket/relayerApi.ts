@@ -8,6 +8,7 @@
  */
 
 import { RelayClient } from "@polymarket/builder-relayer-client";
+import { BuilderConfig } from "@polymarket/builder-signing-sdk";
 import type { JsonRpcSigner } from "@ethersproject/providers";
 import { POLYGON_CONTRACTS } from "./config";
 
@@ -47,11 +48,19 @@ export async function getSafeAddress(
   try {
     console.log("[Relayer] Checking if Safe deployed for:", walletAddress);
     
+    // Create BuilderConfig for authorization
+    const builderConfig = new BuilderConfig({
+      remoteBuilderConfig: {
+        url: `${typeof window !== 'undefined' ? window.location.origin : ''}/api/builder/sign`,
+      },
+    });
+    
     // Use RelayClient to check deployment status
     const relayClient = new RelayClient(
       "https://relayer-v2.polymarket.com",
       137, // Polygon mainnet
-      signer
+      signer,
+      builderConfig
     );
     
     // Check if Safe is deployed
@@ -104,11 +113,19 @@ export async function deploySafe(
       };
     }
     
-    // Create RelayClient instance
+    // Create BuilderConfig for authorization
+    const builderConfig = new BuilderConfig({
+      remoteBuilderConfig: {
+        url: `${typeof window !== 'undefined' ? window.location.origin : ''}/api/builder/sign`,
+      },
+    });
+
+    // Create RelayClient instance with BuilderConfig
     const relayClient = new RelayClient(
       "https://relayer-v2.polymarket.com",
       137, // Polygon mainnet
-      signer
+      signer,
+      builderConfig
     );
     
     console.log("[Relayer] Calling deploy()...");
