@@ -194,8 +194,9 @@ export async function getMarket(conditionId: string): Promise<Market | null> {
 export async function getMarketWithTokens(conditionId: string): Promise<Market | null> {
   try {
     // Try to fetch from Gamma API first (has token data)
+    // NOTE: Gamma API uses "condition_ids" (plural, array) parameter
     const url = buildUrl(getApiUrl("gamma"), "/markets", {
-      condition_id: conditionId,
+      condition_ids: conditionId,  // Changed from condition_id to condition_ids
       limit: 1,
     });
     
