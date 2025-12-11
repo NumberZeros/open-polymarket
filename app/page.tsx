@@ -11,6 +11,7 @@
 
 import { useState, useEffect } from "react";
 import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
 import { MarketFilters, defaultFilters, type MarketFiltersState } from "@/components/markets/MarketFilters";
 import { MarketCard } from "@/components/markets/MarketCard";
 import { useInfiniteMarkets } from "@/hooks/useMarkets";
@@ -194,34 +195,7 @@ export default function HomePage() {
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-[#27272a] mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-[#71717a] text-sm">
-              Powered by Polymarket Builder Program
-            </p>
-            <div className="flex gap-6 text-sm text-[#a1a1aa]">
-              <a
-                href="https://docs.polymarket.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-white transition-colors"
-              >
-                Docs
-              </a>
-              <a
-                href="https://polymarket.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-white transition-colors"
-              >
-                Polymarket
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

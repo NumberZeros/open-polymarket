@@ -13,6 +13,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { useAccount, usePublicClient } from "wagmi";
@@ -444,6 +445,8 @@ function DepositAddressCard({
           )}
         </button>
       </div>
+
+      <Footer />
     </div>
   );
 }

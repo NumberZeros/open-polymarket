@@ -16,7 +16,8 @@ import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { POLYGON_CONTRACTS } from "@/lib/polymarket/config";
 import { MobileMenu } from "@/components/ui/MobileMenu";
-import { TrendingUp, Wallet, Shield } from "lucide-react";
+import { Logo } from "@/components/ui/Logo";
+import { Wallet, Shield } from "lucide-react";
 import useSafeBalance from "@/hooks/useSafeBalance";
 
 export function Header() {
@@ -59,7 +60,7 @@ export function Header() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2">
-            <TrendingUp className="w-8 h-8 text-[#8b5cf6]" />
+            <Logo className="w-8 h-8" />
             <span className="text-xl font-bold">BetHub</span>
           </Link>
 

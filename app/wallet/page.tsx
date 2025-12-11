@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { useAccount, usePublicClient, useWalletClient, useSignTypedData } from "wagmi";
@@ -468,6 +469,8 @@ export default function WalletPage() {
           </div>
         )}
       </main>
+
+      <Footer />
     </div>
   );
 }

@@ -4,10 +4,15 @@
  * Portfolio Page
  *
  * Shows user's positions, open orders, and trade history
+ * 
+ * @metadata
+ * title: Portfolio
+ * description: Track your prediction market positions, open orders, and P&L
  */
 
 import { useEffect, useState, useCallback } from "react";
 import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { useAccount } from "wagmi";
@@ -476,6 +481,8 @@ export default function PortfolioPage() {
           </div>
         )}
       </main>
+
+      <Footer />
     </div>
   );
 }

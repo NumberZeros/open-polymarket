@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
 import { MarketDetailClient } from "./MarketDetailClient";
 import { getMarketWithTokens, getMarketBySlug } from "@/lib/polymarket/marketApi";
 import type { Market } from "@/lib/polymarket/types";
@@ -67,9 +68,12 @@ export default function MarketPage({ params }: MarketPageProps) {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       <Header />
-      <MarketDetailClient market={market} />
+      <div className="flex-1">
+        <MarketDetailClient market={market} />
+      </div>
+      <Footer />
     </div>
   );
 }

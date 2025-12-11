@@ -10,6 +10,7 @@
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import {
   isValidEthereumAddress,
@@ -540,6 +541,8 @@ export default function WithdrawPage() {
           </div>
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 }

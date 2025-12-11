@@ -8,6 +8,7 @@
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useWallet } from "@/providers/WalletContext";
+import { Footer } from "@/components/layout/Footer";
 import { useTrading } from "@/providers/TradingProvider";
 
 export default function DebugPage() {
@@ -216,6 +217,8 @@ export default function DebugPage() {
           </a>
         </div>
       </div>
+
+      <Footer />
     </div>
   );
 }

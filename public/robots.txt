@@ -1,0 +1,12 @@
+# BetHub Robots.txt
+# https://polymarket.thosoft.xyz
+
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: https://polymarket.thosoft.xyz/sitemap.xml
+
+# Disallow admin/debug routes
+Disallow: /debug
+Disallow: /api/

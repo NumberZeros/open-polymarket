@@ -15,6 +15,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { CheckCircle, Loader2, ArrowRight, Key } from "lucide-react";
@@ -282,6 +283,8 @@ function StepCard({
           </button>
         )}
       </div>
+
+      <Footer />
     </div>
   );
 }

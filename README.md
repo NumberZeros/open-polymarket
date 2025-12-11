@@ -1,11 +1,23 @@
 # BetHub 🎯
 
+<div align="center">
+
 [![Next.js](https://img.shields.io/badge/Next.js-15.2-black)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue)](https://www.typescriptlang.org/)
 [![Polymarket](https://img.shields.io/badge/Polymarket-CLOB%20API-purple)](https://docs.polymarket.com/)
 [![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
 
-A modern prediction markets trading platform built on Polymarket's CLOB API. Trade on real-world events with crypto.
+<a href="https://www.producthunt.com/products/bethub?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-bethub" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1048877&theme=dark&t=1765421735402" alt="BetHub - Prediction markets | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+
+**A modern prediction markets trading platform built on Polymarket's CLOB API**
+
+Trade on real-world events with crypto
+
+[🚀 Live Platform](https://polymarket.thosoft.xyz) • [📚 Documentation](#-table-of-contents) • [🛠️ Tech Stack](#-tech-stack)
+
+</div>
+
+---
 
 ## 🌐 Live Platform
 
