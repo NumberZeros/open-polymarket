@@ -81,7 +81,7 @@ export default function BuilderTradesPage() {
   const [selectedTrade, setSelectedTrade] = useState<BuilderTrade | null>(null);
 
   const hasWallet = isConnected && isWalletConnected;
-  const isAuthorized = hasWallet && isTradingSessionComplete;
+  const isAuthorized = hasWallet && isTradingSessionComplete === true;
 
   useEffect(() => {
     setIsMounted(true);
