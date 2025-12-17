@@ -79,6 +79,12 @@ export function Header() {
               Portfolio
             </Link>
             <Link
+              href="/builder-trades"
+              className="text-[#a1a1aa] hover:text-white transition-colors"
+            >
+              Builder Trades
+            </Link>
+            <Link
               href="/wallet"
               className="text-[#a1a1aa] hover:text-white transition-colors"
             >

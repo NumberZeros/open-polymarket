@@ -21,6 +21,7 @@ import {
   Settings,
   ExternalLink,
   Shield,
+  BarChart3,
 } from "lucide-react";
 
 // ============= Types =============
@@ -37,6 +38,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Markets", icon: TrendingUp },
   { href: "/portfolio", label: "Portfolio", icon: PieChart },
+  { href: "/builder-trades", label: "Builder Trades", icon: BarChart3 },
   { href: "/wallet", label: "Wallet", icon: Wallet },
   { href: "/deposit", label: "Deposit", icon: ArrowDownCircle },
   { href: "/withdraw", label: "Withdraw", icon: ArrowUpCircle },
